@@ -95,6 +95,20 @@ class AnalysisResult(BaseModel):
 class AnalyzeRequest(BaseModel):
     image_base64: str
 
+class ChatMessage(BaseModel):
+    role: str  # user, assistant
+    content: str
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class ChatRequest(BaseModel):
+    analysis_id: str
+    message: str
+    image_base64: Optional[str] = None  # Original image for context
+
+class ChatResponse(BaseModel):
+    response: str
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
 class TokenResponse(BaseModel):
     token: str
     user: UserResponse
