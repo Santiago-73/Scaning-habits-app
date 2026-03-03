@@ -1437,9 +1437,11 @@ const Home = () => {
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [analysisResult, setAnalysisResult] = useState(null);
+  const [lastImageBase64, setLastImageBase64] = useState(null);
 
   const handleCapture = async (imageBase64) => {
     setIsLoading(true);
+    setLastImageBase64(imageBase64);
     try {
       const headers = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -1468,7 +1470,7 @@ const Home = () => {
     return (
       <>
         <Navbar onAuthClick={() => setShowAuthModal(true)} onProfileClick={() => setShowProfileModal(true)} />
-        <ResultsView result={analysisResult} onBack={() => setAnalysisResult(null)} />
+        <ResultsView result={analysisResult} onBack={() => setAnalysisResult(null)} imageBase64={lastImageBase64} />
         <Footer />
         <ProfileModal isOpen={showProfileModal} onClose={() => setShowProfileModal(false)} />
         <Toaster position="top-center" richColors />
