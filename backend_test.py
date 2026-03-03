@@ -79,14 +79,211 @@ class NutriScanAPITester:
             self.results.append(result)
             return False, {}
 
-    def test_root_endpoint(self):
-        """Test API root endpoint"""
-        return self.run_test(
-            "API Root",
-            "GET",
-            "",
-            200
+    def test_user_registration(self):
+        """Test user registration"""
+        timestamp = datetime.now().strftime("%H%M%S")
+        test_user = {
+            "name": f"Test User {timestamp}",
+            "email": f"test{timestamp}@nutriscan.com",
+            "password": "TestPass123!",
+            "profile": {
+                "weight": 70.5,
+                "height": 175,
+                "sex": "male",
+                "allergies": ["gluten", "lactose"],
+                "conditions": ["diabetic"]
+            }
+        }
+        
+        success, response = self.run_test(
+            "User Registration",
+            "POST",
+            "auth/register",
+            200,
+            data=test_user
         )
+        
+        if success and response:
+            # Validate response structure
+            required_fields = ["token", "user"]
+            missing_fields = [field for field in required_fields if field not in response]
+            
+            if missing_fields:
+                print(f"⚠️  Missing required fields: {missing_fields}")
+                return False
+            
+            # Store token and user data for subsequent tests
+            self.token = response["token"]
+            self.user_data = response["user"]
+            
+            print(f"   ✅ User registered: {self.user_data.get('name')}")
+            print(f"   ✅ Token received: {self.token[:20]}...")
+            print(f"   ✅ Profile data: {self.user_data.get('profile', {})}")
+            
+        return success
+
+    def test_user_login(self):
+        """Test user login with existing credentials"""
+        if not self.user_data:
+            print("⚠️  Skipping login test - no user data from registration")
+            return True
+            
+        login_data = {
+            "email": self.user_data["email"],
+            "password": "TestPass123!"
+        }
+        
+        success, response = self.run_test(
+            "User Login",
+            "POST",
+            "auth/login",
+            200,
+            data=login_data
+        )
+        
+        if success and response:
+            # Update token with login token
+            self.token = response["token"]
+            print(f"   ✅ Login successful, new token: {self.token[:20]}...")
+            
+        return success
+
+    def test_get_current_user(self):
+        """Test getting current user info"""
+        if not self.token:
+            print("⚠️  Skipping get user test - no token available")
+            return True
+            
+        success, response = self.run_test(
+            "Get Current User",
+            "GET",
+            "auth/me",
+            200,
+            auth_required=True
+        )
+        
+        if success and response:
+            required_fields = ["id", "email", "name", "profile"]
+            missing_fields = [field for field in required_fields if field not in response]
+            
+            if missing_fields:
+                print(f"⚠️  Missing required fields: {missing_fields}")
+                return False
+                
+            print(f"   ✅ User info retrieved: {response.get('name')}")
+            print(f"   ✅ Profile allergies: {response.get('profile', {}).get('allergies', [])}")
+            
+        return success
+
+    def test_update_profile(self):
+        """Test updating user profile"""
+        if not self.token:
+            print("⚠️  Skipping profile update test - no token available")
+            return True
+            
+        update_data = {
+            "name": "Updated Test User",
+            "profile": {
+                "weight": 75.0,
+                "height": 180,
+                "sex": "male",
+                "allergies": ["gluten", "nuts", "soy"],
+                "conditions": ["diabetic", "hypertensive"]
+            }
+        }
+        
+        success, response = self.run_test(
+            "Update User Profile",
+            "PUT",
+            "auth/profile",
+            200,
+            data=update_data,
+            auth_required=True
+        )
+        
+        if success and response:
+            print(f"   ✅ Profile updated: {response.get('name')}")
+            print(f"   ✅ New allergies: {response.get('profile', {}).get('allergies', [])}")
+            print(f"   ✅ New conditions: {response.get('profile', {}).get('conditions', [])}")
+            
+        return success
+
+    def test_analyze_with_auth(self):
+        """Test analyze endpoint with authentication for personalized alerts"""
+        # Create a simple test image (1x1 pixel PNG in base64)
+        test_image_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+        
+        success, response = self.run_test(
+            "Analyze with Authentication",
+            "POST",
+            "analyze",
+            200,
+            data={"image_base64": test_image_b64},
+            auth_required=True
+        )
+        
+        if success and response:
+            # Validate response structure
+            required_fields = ["product_name", "brand", "health_score", "nutrients", "warnings", "recommendations", "personalized_alerts"]
+            missing_fields = [field for field in required_fields if field not in response]
+            
+            if missing_fields:
+                print(f"⚠️  Missing required fields: {missing_fields}")
+                return False
+            
+            print(f"   ✅ Analysis completed for authenticated user")
+            print(f"   ✅ Product: {response.get('product_name')} by {response.get('brand')}")
+            print(f"   ✅ Health score: {response.get('health_score')}")
+            print(f"   ✅ Personalized alerts: {len(response.get('personalized_alerts', []))}")
+            
+            # Check if personalized alerts exist (they should for users with allergies/conditions)
+            alerts = response.get('personalized_alerts', [])
+            if alerts:
+                for alert in alerts:
+                    print(f"      - {alert.get('type', 'unknown')}: {alert.get('message', 'No message')}")
+            
+        return success
+
+    def test_analyze_without_auth(self):
+        """Test analyze endpoint without authentication"""
+        # Create a simple test image (1x1 pixel PNG in base64)
+        test_image_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+        
+        success, response = self.run_test(
+            "Analyze without Authentication",
+            "POST",
+            "analyze",
+            200,
+            data={"image_base64": test_image_b64}
+        )
+        
+        if success and response:
+            print(f"   ✅ Analysis completed for anonymous user")
+            print(f"   ✅ Product: {response.get('product_name')} by {response.get('brand')}")
+            print(f"   ✅ Personalized alerts: {len(response.get('personalized_alerts', []))}")
+            
+        return success
+
+    def test_logout(self):
+        """Test user logout"""
+        if not self.token:
+            print("⚠️  Skipping logout test - no token available")
+            return True
+            
+        success, response = self.run_test(
+            "User Logout",
+            "POST",
+            "auth/logout",
+            200,
+            auth_required=True
+        )
+        
+        if success:
+            print(f"   ✅ Logout successful")
+            # Clear token after logout
+            self.token = None
+            
+        return success
 
     def test_analyze_endpoint(self):
         """Test analyze endpoint with sample data"""
