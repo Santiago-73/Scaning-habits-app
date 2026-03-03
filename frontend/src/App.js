@@ -1245,7 +1245,8 @@ const ResultsView = ({ result, onBack, imageBase64 }) => {
 const ProfileModal = ({ isOpen, onClose }) => {
   const { user, updateProfile } = useAuth();
   const [formData, setFormData] = useState({
-    name: "", weight: "", height: "", sex: "", allergies: [], conditions: []
+    name: "", weight: "", height: "", sex: "", allergies: [], conditions: [],
+    activity_level: "", goal: "", strictness_level: "normal"
   });
   const [isLoading, setIsLoading] = useState(false);
 
@@ -1257,7 +1258,10 @@ const ProfileModal = ({ isOpen, onClose }) => {
         height: user.profile?.height || "",
         sex: user.profile?.sex || "",
         allergies: user.profile?.allergies || [],
-        conditions: user.profile?.conditions || []
+        conditions: user.profile?.conditions || [],
+        activity_level: user.profile?.activity_level || "",
+        goal: user.profile?.goal || "",
+        strictness_level: user.profile?.strictness_level || "normal"
       });
     }
   }, [user]);
@@ -1280,7 +1284,10 @@ const ProfileModal = ({ isOpen, onClose }) => {
           height: formData.height ? parseFloat(formData.height) : null,
           sex: formData.sex || null,
           allergies: formData.allergies,
-          conditions: formData.conditions
+          conditions: formData.conditions,
+          activity_level: formData.activity_level || null,
+          goal: formData.goal || null,
+          strictness_level: formData.strictness_level || "normal"
         }
       });
       toast.success("Perfil actualizado");
