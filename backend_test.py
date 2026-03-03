@@ -363,11 +363,21 @@ class NutriScanAPITester:
         print(f"   Base URL: {self.base_url}")
         print("=" * 50)
 
-        # Test all endpoints
+        # Test basic endpoints
         self.test_root_endpoint()
-        self.test_analyze_endpoint()
-        self.test_status_endpoints()
-        self.test_history_endpoint()
+        
+        # Test authentication flow
+        self.test_user_registration()
+        self.test_user_login()
+        self.test_get_current_user()
+        self.test_update_profile()
+        
+        # Test analysis with and without auth
+        self.test_analyze_with_auth()
+        self.test_analyze_without_auth()
+        
+        # Test logout
+        self.test_logout()
 
         # Print summary
         print("\n" + "=" * 50)
