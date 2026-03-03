@@ -192,13 +192,6 @@ const STRICTNESS_OPTIONS = [
   { id: "very_strict", label: "Sin filtros", desc: "La verdad cruda sobre la comida" },
 ];
 
-const CONDITION_OPTIONS = [
-  { id: "celiac", label: "Celiaco/a" },
-  { id: "diabetic", label: "Diabético/a" },
-  { id: "hypertensive", label: "Hipertenso/a" },
-  { id: "cholesterol", label: "Colesterol alto" },
-];
-
 // ==================== AUTH MODAL ====================
 const AuthModal = ({ isOpen, onClose, onSuccess, initialMode = "login" }) => {
   const [mode, setMode] = useState(initialMode);
