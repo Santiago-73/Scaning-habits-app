@@ -924,8 +924,201 @@ const PersonalizedAlertCard = ({ alert }) => {
   );
 };
 
+// ==================== CHAT COMPONENT ====================
+const ChatBubble = ({ message, isUser }) => {
+  return (
+    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-3`}>
+      <div className={`max-w-[85%] ${isUser ? 'order-2' : 'order-1'}`}>
+        <div className={`flex items-end gap-2 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+          <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${isUser ? 'bg-green-600' : 'bg-zinc-700'}`}>
+            {isUser ? <User className="w-4 h-4 text-white" /> : <Bot className="w-4 h-4 text-green-400" />}
+          </div>
+          <div className={`px-4 py-2.5 rounded-2xl ${isUser ? 'bg-green-600 text-white rounded-br-md' : 'bg-zinc-800 text-zinc-200 rounded-bl-md'}`}>
+            <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ProductChat = ({ analysisId, imageBase64, token }) => {
+  const [messages, setMessages] = useState([]);
+  const [inputValue, setInputValue] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true);
+  const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
+
+  // Load chat history on mount
+  useEffect(() => {
+    const loadHistory = async () => {
+      if (!token) return;
+      try {
+        const response = await axios.get(`${API}/chat/${analysisId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (response.data.messages?.length > 0) {
+          setMessages(response.data.messages);
+        }
+      } catch (e) {
+        console.error("Error loading chat history:", e);
+      }
+    };
+    loadHistory();
+  }, [analysisId, token]);
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const sendMessage = async () => {
+    if (!inputValue.trim() || isLoading) return;
+
+    const userMessage = { role: "user", content: inputValue.trim() };
+    setMessages(prev => [...prev, userMessage]);
+    setInputValue("");
+    setIsLoading(true);
+
+    try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const response = await axios.post(`${API}/chat`, {
+        analysis_id: analysisId,
+        message: userMessage.content,
+        image_base64: imageBase64
+      }, { headers });
+
+      const assistantMessage = { role: "assistant", content: response.data.response };
+      setMessages(prev => [...prev, assistantMessage]);
+    } catch (error) {
+      console.error("Chat error:", error);
+      toast.error("Error al enviar el mensaje");
+      // Remove the user message if failed
+      setMessages(prev => prev.slice(0, -1));
+    } finally {
+      setIsLoading(false);
+      inputRef.current?.focus();
+    }
+  };
+
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
+  const suggestedQuestions = [
+    "¿Es saludable para mí?",
+    "¿Puedo comerlo si estoy a dieta?",
+    "¿Qué ingredientes son preocupantes?",
+    "Dame alternativas más saludables"
+  ];
+
+  return (
+    <Card className="bg-zinc-900/70 border-zinc-800 mt-6 overflow-hidden" data-testid="product-chat">
+      {/* Header */}
+      <button 
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full p-4 flex items-center justify-between hover:bg-zinc-800/50 transition-colors duration-200"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-green-600/20 flex items-center justify-center">
+            <MessageCircle className="w-5 h-5 text-green-500" />
+          </div>
+          <div className="text-left">
+            <h3 className="text-sm font-medium text-zinc-200">Chat con NutriScan AI</h3>
+            <p className="text-xs text-zinc-500">Pregunta lo que quieras sobre este producto</p>
+          </div>
+        </div>
+        <div className={`transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+          <ArrowLeft className="w-5 h-5 text-zinc-500 rotate-90" />
+        </div>
+      </button>
+
+      {isExpanded && (
+        <div className="border-t border-zinc-800">
+          {/* Messages area */}
+          <ScrollArea className="h-[300px] p-4">
+            {messages.length === 0 ? (
+              <div className="text-center py-8">
+                <Bot className="w-12 h-12 text-zinc-700 mx-auto mb-3" />
+                <p className="text-sm text-zinc-500 mb-4">¡Hola! Pregúntame sobre este producto</p>
+                <div className="flex flex-wrap gap-2 justify-center">
+                  {suggestedQuestions.map((q, i) => (
+                    <button
+                      key={i}
+                      onClick={() => { setInputValue(q); inputRef.current?.focus(); }}
+                      className="text-xs px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300 transition-colors duration-200"
+                      data-testid={`suggested-question-${i}`}
+                    >
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <>
+                {messages.map((msg, index) => (
+                  <ChatBubble key={index} message={msg} isUser={msg.role === 'user'} />
+                ))}
+                {isLoading && (
+                  <div className="flex justify-start mb-3">
+                    <div className="flex items-end gap-2">
+                      <div className="w-7 h-7 rounded-full bg-zinc-700 flex items-center justify-center">
+                        <Bot className="w-4 h-4 text-green-400" />
+                      </div>
+                      <div className="px-4 py-3 rounded-2xl rounded-bl-md bg-zinc-800">
+                        <div className="flex gap-1">
+                          <span className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce" style={{animationDelay: '0ms'}}></span>
+                          <span className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce" style={{animationDelay: '150ms'}}></span>
+                          <span className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce" style={{animationDelay: '300ms'}}></span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </>
+            )}
+          </ScrollArea>
+
+          {/* Input area */}
+          <div className="p-4 border-t border-zinc-800 bg-zinc-900/50">
+            <div className="flex gap-2">
+              <Input
+                ref={inputRef}
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="Escribe tu pregunta..."
+                className="flex-1 bg-zinc-800 border-zinc-700 text-zinc-200 placeholder:text-zinc-500"
+                disabled={isLoading}
+                data-testid="chat-input"
+              />
+              <Button
+                onClick={sendMessage}
+                disabled={!inputValue.trim() || isLoading}
+                className="bg-green-600 hover:bg-green-500 px-4"
+                data-testid="chat-send"
+              >
+                <Send className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+};
+
 // ==================== RESULTS VIEW ====================
-const ResultsView = ({ result, onBack }) => {
+const ResultsView = ({ result, onBack, imageBase64 }) => {
+  const { token } = useAuth();
+  
   if (!result) return null;
 
   return (
@@ -1033,6 +1226,9 @@ const ResultsView = ({ result, onBack }) => {
             </CardContent>
           </Card>
         )}
+
+        {/* AI Chat */}
+        <ProductChat analysisId={result.id} imageBase64={imageBase64} token={token} />
 
         <div className="mt-8 flex justify-center">
           <Button onClick={onBack} className="bg-green-600 hover:bg-green-500 text-white px-8 neon-glow" data-testid="new-scan-button">
