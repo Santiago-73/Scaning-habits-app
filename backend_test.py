@@ -72,7 +72,7 @@ class NutriScanAPITester:
         return success
 
     def test_register(self):
-        """Test user registration"""
+        """Test user registration with extended profile"""
         # First try to delete existing user (ignore if fails)
         try:
             requests.delete(f"{self.base_url}/auth/user/newuser@test.com")
@@ -80,7 +80,7 @@ class NutriScanAPITester:
             pass
 
         success, response = self.run_test(
-            "User Registration",
+            "User Registration with Extended Profile",
             "POST",
             "auth/register",
             200,
@@ -93,7 +93,10 @@ class NutriScanAPITester:
                     "height": 175.0,
                     "sex": "male",
                     "allergies": ["gluten"],
-                    "conditions": ["diabetic"]
+                    "conditions": ["celiac"],
+                    "activity_level": "moderate",
+                    "goal": "lose_weight",
+                    "strictness_level": "strict"
                 }
             }
         )
