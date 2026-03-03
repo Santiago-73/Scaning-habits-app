@@ -327,9 +327,11 @@ def main():
     # Test sequence
     tests = [
         ("API Root Endpoint", tester.test_root_endpoint),
+        ("Test User Login (chat_test@test.com)", tester.test_test_user_login),
         ("User Registration", tester.test_register),
         ("Get Current User", tester.test_get_me),
         ("Analyze Label", tester.test_analyze_endpoint),
+        ("Chat Functionality", tester.test_chat_functionality),
         ("Update Profile", tester.test_profile_update),
         ("User Logout", tester.test_logout),
         ("User Login", tester.test_login),
