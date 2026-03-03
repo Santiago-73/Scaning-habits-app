@@ -285,7 +285,14 @@ class NutriScanAPITester:
             
         return success
 
-    def test_analyze_endpoint(self):
+    def test_root_endpoint(self):
+        """Test API root endpoint"""
+        return self.run_test(
+            "API Root",
+            "GET",
+            "",
+            200
+        )
         """Test analyze endpoint with sample data"""
         success, response = self.run_test(
             "Analyze Label",
