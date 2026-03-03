@@ -26,7 +26,12 @@ import {
   Heart,
   Scale,
   Ruler,
-  UserCircle
+  UserCircle,
+  Send,
+  MessageCircle,
+  Bot,
+  Target,
+  Activity
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { 
@@ -41,6 +46,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
