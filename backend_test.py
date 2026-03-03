@@ -228,6 +228,96 @@ class NutriScanAPITester:
             self.token = None  # Clear token
         return success
 
+    def test_chat_functionality(self):
+        """Test chat functionality with analysis"""
+        # First, we need an analysis ID from a previous analyze call
+        test_image_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+        
+        # Get analysis first
+        success, analysis_response = self.run_test(
+            "Get Analysis for Chat Test",
+            "POST",
+            "analyze",
+            200,
+            data={
+                "image_base64": test_image_b64
+            }
+        )
+        
+        if not success:
+            print("   ❌ Failed to get analysis for chat test")
+            return False
+            
+        analysis_id = analysis_response.get('id')
+        if not analysis_id:
+            print("   ❌ No analysis ID returned")
+            return False
+            
+        print(f"   ✅ Analysis ID for chat: {analysis_id}")
+        
+        # Test chat endpoint
+        success, chat_response = self.run_test(
+            "Chat with AI",
+            "POST",
+            "chat",
+            200,
+            data={
+                "analysis_id": analysis_id,
+                "message": "¿Es saludable para mí?",
+                "image_base64": test_image_b64
+            }
+        )
+        
+        if success:
+            response_text = chat_response.get('response', '')
+            print(f"   ✅ Chat response received: {response_text[:100]}...")
+            print(f"   ✅ Response length: {len(response_text)} characters")
+            
+            # Test getting chat history
+            success_history, history_response = self.run_test(
+                "Get Chat History",
+                "GET",
+                f"chat/{analysis_id}",
+                200
+            )
+            
+            if success_history:
+                messages = history_response.get('messages', [])
+                print(f"   ✅ Chat history retrieved: {len(messages)} messages")
+                if messages:
+                    print(f"   ✅ Last message: {messages[-1].get('content', '')[:50]}...")
+            
+            return success_history
+        
+        return success
+
+    def test_test_user_login(self):
+        """Test login with the specific test user mentioned in requirements"""
+        success, response = self.run_test(
+            "Test User Login (chat_test@test.com)",
+            "POST",
+            "auth/login",
+            200,
+            data={
+                "email": "chat_test@test.com",
+                "password": "test123"
+            }
+        )
+        
+        if success and 'token' in response:
+            self.token = response['token']
+            self.user_id = response.get('user', {}).get('id')
+            user = response.get('user', {})
+            profile = user.get('profile', {})
+            print(f"   ✅ Test user login successful")
+            print(f"   ✅ User name: {user.get('name', 'N/A')}")
+            print(f"   ✅ Conditions: {profile.get('conditions', [])}")
+            print(f"   ✅ Strictness level: {profile.get('strictness_level', 'N/A')}")
+            return True
+        else:
+            print("   ℹ️ Test user doesn't exist or login failed - this is expected if user wasn't created yet")
+            return False
+
 def main():
     print("=== NUTRISCAN AI BACKEND API TESTING ===")
     print(f"Testing at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
