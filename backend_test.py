@@ -183,9 +183,9 @@ class NutriScanAPITester:
         return success
 
     def test_profile_update(self):
-        """Test profile update"""
+        """Test profile update with new fields"""
         success, response = self.run_test(
-            "Update Profile",
+            "Update Profile with New Fields",
             "PUT",
             "auth/profile",
             200,
@@ -196,15 +196,22 @@ class NutriScanAPITester:
                     "height": 180.0,
                     "sex": "male",
                     "allergies": ["gluten", "lactose"],
-                    "conditions": ["diabetic", "hypertensive"]
+                    "conditions": ["celiac", "hypertensive"],
+                    "activity_level": "active",
+                    "goal": "gain_muscle",
+                    "strictness_level": "very_strict"
                 }
             }
         )
         
         if success:
+            profile = response.get('profile', {})
             print(f"   ✅ Updated name: {response.get('name')}")
-            print(f"   ✅ Updated allergies: {response.get('profile', {}).get('allergies', [])}")
-            print(f"   ✅ Updated conditions: {response.get('profile', {}).get('conditions', [])}")
+            print(f"   ✅ Updated allergies: {profile.get('allergies', [])}")
+            print(f"   ✅ Updated conditions: {profile.get('conditions', [])}")
+            print(f"   ✅ Updated activity level: {profile.get('activity_level', 'N/A')}")
+            print(f"   ✅ Updated goal: {profile.get('goal', 'N/A')}")
+            print(f"   ✅ Updated strictness level: {profile.get('strictness_level', 'N/A')}")
         return success
 
     def test_logout(self):
