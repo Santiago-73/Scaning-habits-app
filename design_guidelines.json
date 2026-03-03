@@ -1,0 +1,139 @@
+{
+  "design_system": {
+    "identity": {
+      "name": "NutriScan AI",
+      "persona": "E1 - The Anti-AI Designer",
+      "vibe": "Cyber-Health, Tactile Dark Mode, Precision",
+      "principles": [
+        "Fusion over Imitation: Mix medical precision with gaming UI aesthetics.",
+        "Emotion First: Scanning feels like a discovery, not a chore.",
+        "Content is King: Data visualization is the hero.",
+        "Contrast: Deep blacks vs. Neon signals."
+      ]
+    },
+    "typography": {
+      "font_family": {
+        "headings": "Manrope, sans-serif",
+        "body": "Inter, sans-serif",
+        "mono": "JetBrains Mono, monospace"
+      },
+      "scale": {
+        "h1": "text-4xl md:text-6xl font-bold tracking-tight",
+        "h2": "text-3xl md:text-4xl font-semibold tracking-tight",
+        "h3": "text-2xl font-medium",
+        "body": "text-base leading-relaxed text-zinc-400",
+        "label": "text-xs font-bold uppercase tracking-widest text-zinc-500"
+      }
+    },
+    "colors": {
+      "palette": {
+        "background": "#09090b",
+        "surface": "#18181b",
+        "surface_highlight": "#27272a",
+        "border": "#27272a",
+        "primary": "#22c55e",
+        "primary_glow": "rgba(34, 197, 94, 0.5)",
+        "danger": "#ef4444",
+        "warning": "#eab308",
+        "text_primary": "#fafafa",
+        "text_secondary": "#a1a1aa"
+      },
+      "usage": {
+        "body_bg": "bg-zinc-950",
+        "card_bg": "bg-zinc-900/50 backdrop-blur-md border border-zinc-800",
+        "primary_btn": "bg-green-600 hover:bg-green-500 text-white shadow-[0_0_20px_rgba(34,197,94,0.3)]",
+        "text_main": "text-zinc-50",
+        "text_muted": "text-zinc-400"
+      }
+    },
+    "visual_enhancers": {
+      "glassmorphism": "backdrop-blur-xl bg-black/40 border border-white/10",
+      "neon_glow": "shadow-[0_0_15px_rgba(34,197,94,0.4)]",
+      "scan_line": "bg-gradient-to-b from-transparent via-green-500/50 to-transparent",
+      "border_radius": "rounded-2xl"
+    },
+    "layout_strategies": {
+      "mobile_first": "Always start with grid-cols-1. Use generous padding (p-6, p-8) even on mobile.",
+      "bento_grid": "Use for results page. Mix square and tall cards.",
+      "hero_section": "Centered, immersive. Background image with heavy dark overlay (opacity 90%)."
+    },
+    "motion": {
+      "hover": "transition-all duration-300 ease-out hover:scale-[1.02]",
+      "scan_animation": "animate-scan-vertical",
+      "page_transition": "animate-in fade-in slide-in-from-bottom-4 duration-500"
+    }
+  },
+  "components": {
+    "ScanButton": {
+      "description": "The heart of the app. Large, pulsing, central.",
+      "style": "h-24 w-24 rounded-full bg-green-600 text-white shadow-[0_0_30px_rgba(34,197,94,0.4)] hover:shadow-[0_0_50px_rgba(34,197,94,0.6)] transition-all duration-500 flex items-center justify-center",
+      "icon": "CameraIcon (Lucide) - size 32"
+    },
+    "NutriCard": {
+      "description": "Displays a single metric (e.g., Calories).",
+      "style": "bg-zinc-900/80 border border-zinc-800 p-6 rounded-2xl flex flex-col items-center justify-center gap-2",
+      "text_style": "text-3xl font-bold text-white"
+    },
+    "Navbar": {
+      "description": "Minimalist top bar.",
+      "style": "fixed top-0 w-full z-50 bg-black/50 backdrop-blur-lg border-b border-white/5 h-16 flex items-center justify-between px-6"
+    },
+    "Footer": {
+      "description": "Legal compliance for AdSense.",
+      "style": "bg-black border-t border-zinc-900 py-12 px-6 text-center text-zinc-600 text-sm",
+      "links": ["Política de Privacidad", "Términos de Uso", "Contacto"]
+    }
+  },
+  "assets": {
+    "images": {
+      "hero_bg": {
+        "url": "https://images.unsplash.com/photo-1612287460861-fe8f50a81811?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzF8MHwxfHNlYXJjaHwxfHxoZWFsdGh5JTIwZnJlc2glMjBmb29kJTIwZGFyayUyMGJhY2tncm91bmR8ZW58MHx8fHwxNzcyNTQ5Mjk4fDA&ixlib=rb-4.1.0&q=85",
+        "alt": "Dark organic food background",
+        "usage": "Landing page background with 'bg-black/90' overlay"
+      },
+      "product_placeholder": {
+        "url": "https://images.unsplash.com/photo-1702724122866-8898b15ebeac?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NjZ8MHwxfHNlYXJjaHwxfHxmb29kJTIwcHJvZHVjdCUyMHBhY2thZ2luZyUyMGJvdHRsZSUyMGphcnxlbnwwfHx8fDE3NzI1NDkyOTl8MA&ixlib=rb-4.1.0&q=85",
+        "alt": "Scanned product example",
+        "usage": "Result page product image"
+      }
+    },
+    "icons": {
+      "library": "lucide-react",
+      "required": ["Camera", "ScanLine", "Zap", "AlertTriangle", "CheckCircle", "Menu", "X", "ChevronLeft"]
+    }
+  },
+  "instructions_to_main_agent": {
+    "general": [
+      "Implement the app using React + Tailwind CSS.",
+      "Use 'lucide-react' for icons.",
+      "Ensure the theme is strictly DARK MODE (zinc-950 background).",
+      "The 'Scan' flow is: Landing -> Camera Modal (Simulated) -> Loading -> Results Page.",
+      "Use the provided image URLs for backgrounds and placeholders.",
+      "Add 'data-testid' to all interactive elements."
+    ],
+    "specific_pages": {
+      "Landing": "Hero section with the 'ScanButton' prominently displayed. Use the 'hero_bg' image with a heavy dark overlay.",
+      "CameraModal": "A full-screen modal simulating a camera view. Use a CSS animation for a 'scanning line' moving up and down.",
+      "Results": "A clean dashboard showing nutritional info. Use 'NutriCard' components for metrics like Calories, Fat, Sugar. Show a 'Health Score' (e.g., 85/100).",
+      "Footer": "Must include links for 'Política de Privacidad', 'Términos de Uso', 'Contacto' to satisfy AdSense requirements."
+    }
+  },
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients.",
+    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "Use glass-morphism effects with backdrop filters (12-24px blur).",
+    "You MUST NOT apply universal transition. Eg: 'transition: all'. This results in breaking transforms.",
+    "You MUST NOT center align the app container, ie do not add '.App { text-align: center; }' in the css file.",
+    "Always use modern button styles like pill-shaped, or sharp button with interaction animations & color relevant to the app style.",
+    "NEVER: use AI assistant Emoji characters like 🤖🧠 etc for icons.",
+    "Every interaction needs micro-animations - hover states, transitions, parallax effects, and entrance animations.",
+    "Use 2-3x more spacing than feels comfortable.",
+    "Subtle grain textures, noise overlays, custom cursors, selection states, and loading animations: separates good from extraordinary.",
+    "Main agent relies on these image URLs. Missing categories = main agent will use placeholder text which is FORBIDDEN.",
+    "Prioritize using pre-existing components from src/components/ui when applicable.",
+    "Components MUST use named exports.",
+    "Pages MUST use default exports.",
+    "Use 'sonner' for toasts."
+  ]
+}
