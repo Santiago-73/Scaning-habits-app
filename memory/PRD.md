@@ -1,86 +1,75 @@
 # NutriScan AI - PRD (Product Requirements Document)
 
 ## Original Problem Statement
-Crear una Web App con React y Tailwind CSS para escanear etiquetas alimenticias. Diseño limpio con tema oscuro, botón grande "Escanear Etiqueta". Al pulsarlo, debe abrir la cámara del móvil (con capture='environment') o permitir subir una foto. Análisis con Gemini 3 Flash. Sistema de cuentas con perfil de usuario (alergias, condiciones, peso, altura, sexo). Alertas personalizadas basadas en el perfil. Footer preparado para Google AdSense.
+Web App para escanear etiquetas alimenticias con análisis de IA (Gemini 3 Flash). Sistema de cuentas con perfil completo (alergias, condiciones, peso, altura, sexo, actividad, objetivo). Chat persistente con IA en pantalla de resultados, con personalidad basada en "Nivel de Exigencia" del usuario.
 
 ## User Personas
-- **Usuario Principal**: Consumidores conscientes de su salud que desean analizar etiquetas nutricionales
-- **Usuario con Alergias**: Personas con alergias alimentarias (gluten, lactosa, frutos secos, etc.)
-- **Usuario con Condiciones**: Personas con diabetes, celiaquía, hipertensión que necesitan vigilar nutrientes específicos
+- **Usuario Principal**: Consumidores que analizan etiquetas nutricionales
+- **Usuario con Restricciones**: Celiacos, diabéticos, alérgicos que necesitan alertas personalizadas
+- **Usuario Fitness**: Personas con objetivos de pérdida de peso o ganancia muscular
 
-## Core Requirements
-1. ✅ Tema oscuro (Cyber-Health aesthetic)
-2. ✅ Idioma español
-3. ✅ Botón grande de escaneo con animación neon glow
-4. ✅ Modal de cámara con `capture="environment"` para cámara trasera
-5. ✅ Opción de subir desde galería
-6. ✅ Análisis REAL con Gemini 3 Flash
-7. ✅ Sistema de autenticación (registro/login)
-8. ✅ Perfil de usuario con peso, altura, sexo
-9. ✅ Selección de alergias (gluten, lactosa, frutos secos, huevo, mariscos, soja, pescado)
-10. ✅ Selección de condiciones (celiaco, diabético, hipertenso, colesterol)
-11. ✅ Alertas personalizadas basadas en perfil
-12. ✅ Footer con enlaces legales para AdSense
+## Core Requirements Implemented
 
-## What's Been Implemented (Date: 2026-03-03)
+### ✅ Análisis de Etiquetas
+- Botón de escaneo con cámara trasera (`capture="environment"`)
+- Opción de subir desde galería
+- Análisis REAL con Gemini 3 Flash
+- Resultados: Health Score, nutrientes, ingredientes, advertencias, recomendaciones
 
-### Backend (FastAPI)
-- `POST /api/auth/register` - Registro con perfil completo
-- `POST /api/auth/login` - Login con token
+### ✅ Sistema de Cuentas
+- Registro con perfil completo en 3 pasos
+- Login con tokens persistentes
+- Perfil editable con campos:
+  - Peso, altura, sexo
+  - Alergias (gluten, lactosa, frutos secos, huevo, mariscos, soja, pescado)
+  - Condiciones (celiaco, diabético, hipertenso, colesterol)
+  - Nivel de actividad (sedentario → muy activa)
+  - Objetivo (perder peso, mantener, ganar músculo, mejorar salud)
+  - **Nivel de Exigencia** (relajado, normal, estricto, sin filtros)
+
+### ✅ Alertas Personalizadas
+- Detección automática de alérgenos en ingredientes
+- Alertas para celiacos (gluten)
+- Alertas para diabéticos (azúcar)
+- Alertas para hipertensos (sodio)
+
+### ✅ Chat IA Persistente (NUEVO)
+- Componente de chat estilo WhatsApp en pantalla de resultados
+- Burbujas de usuario (verde) y asistente (gris)
+- Preguntas sugeridas para iniciar conversación
+- Contexto multimodal: imagen + análisis + perfil del usuario
+- Historial de chat persistente en MongoDB
+- **Personalidad según Nivel de Exigencia**:
+  - Relajado: Consejos suaves y comprensivos
+  - Normal: Información equilibrada
+  - Estricto: Críticas honestas y directas
+  - Sin filtros: La verdad cruda sobre la comida (sarcasmo incluido)
+
+## API Endpoints
+
+### Auth
+- `POST /api/auth/register` - Registro con perfil
+- `POST /api/auth/login` - Login
 - `POST /api/auth/logout` - Cerrar sesión
-- `GET /api/auth/me` - Obtener usuario actual
+- `GET /api/auth/me` - Usuario actual
 - `PUT /api/auth/profile` - Actualizar perfil
-- `POST /api/analyze` - Análisis de etiquetas con Gemini 3 Flash REAL
+
+### Analysis
+- `POST /api/analyze` - Analizar etiqueta con Gemini 3 Flash
 - `GET /api/history` - Historial de escaneos
 
-### Frontend (React + Tailwind)
-- **AuthProvider**: Contexto global de autenticación
-- **Landing Page**: Hero con botón de escaneo, features, CTA para registro
-- **AuthModal**: 3 pasos de registro (credenciales → perfil → alergias/condiciones)
-- **ProfileModal**: Edición de perfil completo
-- **CameraModal**: 
-  - Botón "Cámara" con `capture="environment"`
-  - Botón "Galería" para subir desde archivos
-  - Vista previa de imagen
-  - Animación de escaneo durante análisis
-- **ResultsView**: 
-  - Alertas personalizadas según perfil del usuario
-  - Info del producto (nombre, marca, porción)
-  - Health Score circular
-  - Tarjetas de nutrientes con barras de progreso
-  - Lista de ingredientes
-  - Advertencias y recomendaciones
+### Chat
+- `POST /api/chat` - Enviar mensaje (multimodal)
+- `GET /api/chat/{analysis_id}` - Obtener historial de chat
 
-### Alertas Personalizadas
-El sistema genera alertas automáticas cuando:
-- **Alergias**: Detecta ingredientes relacionados con las alergias del usuario
-- **Celiaco**: Alerta si contiene gluten, trigo, cebada, centeno
-- **Diabético**: Alerta si tiene alto contenido de azúcar
-- **Hipertenso**: Alerta si tiene alto contenido de sodio
-
-## Prioritized Backlog
-
-### P0 (Completado)
-- ✅ Análisis con IA real (Gemini 3 Flash)
-- ✅ Sistema de cuentas
-- ✅ Alertas personalizadas
-
-### P1 (Alta prioridad)
-- [ ] Páginas legales completas (Privacidad, Términos, Contacto)
-- [ ] Historial de escaneos en UI
-- [ ] PWA para instalación en móvil
-
-### P2 (Media prioridad)
-- [ ] Guardar productos favoritos
-- [ ] Comparar productos
-- [ ] Compartir resultados
-
-### P3 (Baja prioridad)
-- [ ] Modo offline
-- [ ] Notificaciones push
-- [ ] Multi-idioma
+## Tech Stack
+- Frontend: React + Tailwind CSS + Shadcn/UI
+- Backend: FastAPI + MongoDB
+- IA: Gemini 3 Flash via emergentintegrations
+- Despliegue: Compatible con Vercel
 
 ## Next Tasks
-1. Crear páginas legales completas para cumplir requisitos de AdSense
-2. Añadir vista de historial de escaneos
-3. Implementar PWA para mejor experiencia móvil
+1. Crear páginas legales (Privacidad, Términos) para AdSense
+2. PWA para instalación en móvil
+3. Añadir historial de escaneos en UI
+4. Compartir resultados
