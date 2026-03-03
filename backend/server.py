@@ -259,7 +259,7 @@ IMPORTANTE: Responde SOLO con el JSON, sin texto adicional."""
         
         user_message = UserMessage(
             text="Analiza esta etiqueta nutricional y extrae toda la información. Responde en JSON.",
-            images=[image_content]
+            file_contents=[image_content]
         )
         
         response = await chat.send_message(user_message)
