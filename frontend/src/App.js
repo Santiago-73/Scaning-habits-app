@@ -170,6 +170,35 @@ const CONDITION_OPTIONS = [
   { id: "cholesterol", label: "Colesterol alto" },
 ];
 
+const ACTIVITY_OPTIONS = [
+  { id: "sedentary", label: "Sedentario" },
+  { id: "light", label: "Actividad ligera" },
+  { id: "moderate", label: "Moderada" },
+  { id: "active", label: "Activa" },
+  { id: "very_active", label: "Muy activa" },
+];
+
+const GOAL_OPTIONS = [
+  { id: "lose_weight", label: "Perder peso" },
+  { id: "maintain", label: "Mantener peso" },
+  { id: "gain_muscle", label: "Ganar músculo" },
+  { id: "health", label: "Mejorar salud" },
+];
+
+const STRICTNESS_OPTIONS = [
+  { id: "relaxed", label: "Relajado", desc: "Consejos suaves y comprensivos" },
+  { id: "normal", label: "Normal", desc: "Información equilibrada" },
+  { id: "strict", label: "Estricto", desc: "Críticas honestas y directas" },
+  { id: "very_strict", label: "Sin filtros", desc: "La verdad cruda sobre la comida" },
+];
+
+const CONDITION_OPTIONS = [
+  { id: "celiac", label: "Celiaco/a" },
+  { id: "diabetic", label: "Diabético/a" },
+  { id: "hypertensive", label: "Hipertenso/a" },
+  { id: "cholesterol", label: "Colesterol alto" },
+];
+
 // ==================== AUTH MODAL ====================
 const AuthModal = ({ isOpen, onClose, onSuccess, initialMode = "login" }) => {
   const [mode, setMode] = useState(initialMode);
