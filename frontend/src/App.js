@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import "@/App.css";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Toaster, toast } from "sonner";
@@ -19,7 +19,16 @@ import {
   Cookie,
   Wheat,
   Dna,
-  Sparkles
+  Sparkles,
+  User,
+  LogOut,
+  Settings,
+  Shield,
+  AlertCircle,
+  Heart,
+  Scale,
+  Ruler,
+  UserCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { 
@@ -30,14 +39,468 @@ import {
   DialogDescription
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
+// Auth Context
+const useAuth = () => {
+  const [user, setUser] = useState(null);
+  const [token, setToken] = useState(localStorage.getItem('nutriscan_token'));
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const savedToken = localStorage.getItem('nutriscan_token');
+      if (savedToken) {
+        try {
+          const response = await axios.get(`${API}/auth/me`, {
+            headers: { Authorization: `Bearer ${savedToken}` }
+          });
+          setUser(response.data);
+          setToken(savedToken);
+        } catch (error) {
+          localStorage.removeItem('nutriscan_token');
+          setToken(null);
+        }
+      }
+      setLoading(false);
+    };
+    checkAuth();
+  }, []);
+
+  const login = async (email, password) => {
+    const response = await axios.post(`${API}/auth/login`, { email, password });
+    localStorage.setItem('nutriscan_token', response.data.token);
+    setToken(response.data.token);
+    setUser(response.data.user);
+    return response.data;
+  };
+
+  const register = async (name, email, password, profile) => {
+    const response = await axios.post(`${API}/auth/register`, { 
+      name, email, password, profile 
+    });
+    localStorage.setItem('nutriscan_token', response.data.token);
+    setToken(response.data.token);
+    setUser(response.data.user);
+    return response.data;
+  };
+
+  const logout = async () => {
+    try {
+      await axios.post(`${API}/auth/logout`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+    } catch (e) {}
+    localStorage.removeItem('nutriscan_token');
+    setToken(null);
+    setUser(null);
+  };
+
+  const updateProfile = async (profileData) => {
+    const response = await axios.put(`${API}/auth/profile`, profileData, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    setUser(response.data);
+    return response.data;
+  };
+
+  return { user, token, loading, login, register, logout, updateProfile };
+};
+
+// Allergy/Condition options
+const ALLERGY_OPTIONS = [
+  { id: "gluten", label: "Gluten" },
+  { id: "lactose", label: "Lactosa" },
+  { id: "nuts", label: "Frutos secos" },
+  { id: "eggs", label: "Huevo" },
+  { id: "shellfish", label: "Mariscos" },
+  { id: "soy", label: "Soja" },
+  { id: "fish", label: "Pescado" },
+];
+
+const CONDITION_OPTIONS = [
+  { id: "celiac", label: "Celiaco/a" },
+  { id: "diabetic", label: "Diabético/a" },
+  { id: "hypertensive", label: "Hipertenso/a" },
+  { id: "cholesterol", label: "Colesterol alto" },
+];
+
+// Auth Modal Component
+const AuthModal = ({ isOpen, onClose, onSuccess, initialMode = "login" }) => {
+  const [mode, setMode] = useState(initialMode);
+  const [step, setStep] = useState(1);
+  const [isLoading, setIsLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    password: "",
+    weight: "",
+    height: "",
+    sex: "",
+    allergies: [],
+    conditions: []
+  });
+
+  const auth = useAuth();
+
+  const handleLogin = async () => {
+    setIsLoading(true);
+    try {
+      await auth.login(formData.email, formData.password);
+      toast.success("¡Bienvenido de nuevo!");
+      onSuccess?.();
+      onClose();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Error al iniciar sesión");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRegister = async () => {
+    setIsLoading(true);
+    try {
+      const profile = {
+        weight: formData.weight ? parseFloat(formData.weight) : null,
+        height: formData.height ? parseFloat(formData.height) : null,
+        sex: formData.sex || null,
+        allergies: formData.allergies,
+        conditions: formData.conditions
+      };
+      await auth.register(formData.name, formData.email, formData.password, profile);
+      toast.success("¡Cuenta creada con éxito!");
+      onSuccess?.();
+      onClose();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Error al registrarse");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const toggleAllergy = (id) => {
+    setFormData(prev => ({
+      ...prev,
+      allergies: prev.allergies.includes(id)
+        ? prev.allergies.filter(a => a !== id)
+        : [...prev.allergies, id]
+    }));
+  };
+
+  const toggleCondition = (id) => {
+    setFormData(prev => ({
+      ...prev,
+      conditions: prev.conditions.includes(id)
+        ? prev.conditions.filter(c => c !== id)
+        : [...prev.conditions, id]
+    }));
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="bg-zinc-950 border-zinc-800 max-w-md mx-auto">
+        <DialogHeader>
+          <DialogTitle className="text-xl font-semibold text-zinc-50 flex items-center gap-2">
+            {mode === "login" ? (
+              <><User className="w-5 h-5 text-green-500" /> Iniciar Sesión</>
+            ) : (
+              <><UserCircle className="w-5 h-5 text-green-500" /> 
+                {step === 1 ? "Crear Cuenta" : step === 2 ? "Tu Perfil de Salud" : "Alergias y Condiciones"}
+              </>
+            )}
+          </DialogTitle>
+          <DialogDescription className="text-sm text-zinc-500">
+            {mode === "login" 
+              ? "Accede a tu cuenta para ver alertas personalizadas"
+              : step === 1 
+                ? "Crea tu cuenta para personalizar tu experiencia"
+                : step === 2
+                  ? "Esta información nos ayuda a darte alertas más precisas"
+                  : "Selecciona tus alergias y condiciones de salud"
+            }
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 pt-4">
+          {mode === "login" ? (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="email" className="text-zinc-300">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="tu@email.com"
+                  className="bg-zinc-900 border-zinc-800 text-zinc-50"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  data-testid="login-email"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password" className="text-zinc-300">Contraseña</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="••••••••"
+                  className="bg-zinc-900 border-zinc-800 text-zinc-50"
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  data-testid="login-password"
+                />
+              </div>
+              <Button 
+                onClick={handleLogin} 
+                className="w-full bg-green-600 hover:bg-green-500"
+                disabled={isLoading}
+                data-testid="login-submit"
+              >
+                {isLoading ? "Iniciando..." : "Iniciar Sesión"}
+              </Button>
+              <p className="text-center text-sm text-zinc-500">
+                ¿No tienes cuenta?{" "}
+                <button 
+                  onClick={() => { setMode("register"); setStep(1); }}
+                  className="text-green-500 hover:underline"
+                  data-testid="switch-to-register"
+                >
+                  Regístrate
+                </button>
+              </p>
+            </>
+          ) : (
+            <>
+              {step === 1 && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="name" className="text-zinc-300">Nombre</Label>
+                    <Input
+                      id="name"
+                      placeholder="Tu nombre"
+                      className="bg-zinc-900 border-zinc-800 text-zinc-50"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      data-testid="register-name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="reg-email" className="text-zinc-300">Email</Label>
+                    <Input
+                      id="reg-email"
+                      type="email"
+                      placeholder="tu@email.com"
+                      className="bg-zinc-900 border-zinc-800 text-zinc-50"
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      data-testid="register-email"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="reg-password" className="text-zinc-300">Contraseña</Label>
+                    <Input
+                      id="reg-password"
+                      type="password"
+                      placeholder="Mínimo 6 caracteres"
+                      className="bg-zinc-900 border-zinc-800 text-zinc-50"
+                      value={formData.password}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                      data-testid="register-password"
+                    />
+                  </div>
+                  <Button 
+                    onClick={() => setStep(2)} 
+                    className="w-full bg-green-600 hover:bg-green-500"
+                    disabled={!formData.name || !formData.email || !formData.password}
+                    data-testid="register-next-step"
+                  >
+                    Continuar
+                  </Button>
+                </>
+              )}
+
+              {step === 2 && (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-zinc-300 flex items-center gap-1">
+                        <Scale className="w-4 h-4" /> Peso (kg)
+                      </Label>
+                      <Input
+                        type="number"
+                        placeholder="70"
+                        className="bg-zinc-900 border-zinc-800 text-zinc-50"
+                        value={formData.weight}
+                        onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
+                        data-testid="register-weight"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-zinc-300 flex items-center gap-1">
+                        <Ruler className="w-4 h-4" /> Altura (cm)
+                      </Label>
+                      <Input
+                        type="number"
+                        placeholder="170"
+                        className="bg-zinc-900 border-zinc-800 text-zinc-50"
+                        value={formData.height}
+                        onChange={(e) => setFormData({ ...formData, height: e.target.value })}
+                        data-testid="register-height"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-zinc-300 flex items-center gap-1">
+                      <User className="w-4 h-4" /> Sexo
+                    </Label>
+                    <Select 
+                      value={formData.sex} 
+                      onValueChange={(value) => setFormData({ ...formData, sex: value })}
+                    >
+                      <SelectTrigger className="bg-zinc-900 border-zinc-800 text-zinc-50" data-testid="register-sex">
+                        <SelectValue placeholder="Selecciona" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-zinc-900 border-zinc-800">
+                        <SelectItem value="male">Masculino</SelectItem>
+                        <SelectItem value="female">Femenino</SelectItem>
+                        <SelectItem value="other">Otro</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="outline" 
+                      onClick={() => setStep(1)} 
+                      className="flex-1 border-zinc-700"
+                    >
+                      Atrás
+                    </Button>
+                    <Button 
+                      onClick={() => setStep(3)} 
+                      className="flex-1 bg-green-600 hover:bg-green-500"
+                      data-testid="register-to-allergies"
+                    >
+                      Continuar
+                    </Button>
+                  </div>
+                </>
+              )}
+
+              {step === 3 && (
+                <>
+                  <div className="space-y-3">
+                    <Label className="text-zinc-300 flex items-center gap-1">
+                      <AlertTriangle className="w-4 h-4 text-yellow-500" /> Alergias
+                    </Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {ALLERGY_OPTIONS.map((allergy) => (
+                        <div 
+                          key={allergy.id}
+                          className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors duration-200 ${
+                            formData.allergies.includes(allergy.id)
+                              ? "bg-yellow-500/10 border-yellow-500/50"
+                              : "bg-zinc-900 border-zinc-800 hover:border-zinc-700"
+                          }`}
+                          onClick={() => toggleAllergy(allergy.id)}
+                          data-testid={`allergy-${allergy.id}`}
+                        >
+                          <Checkbox 
+                            checked={formData.allergies.includes(allergy.id)}
+                            className="border-zinc-600"
+                          />
+                          <span className="text-sm text-zinc-300">{allergy.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label className="text-zinc-300 flex items-center gap-1">
+                      <Heart className="w-4 h-4 text-red-500" /> Condiciones de Salud
+                    </Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {CONDITION_OPTIONS.map((condition) => (
+                        <div 
+                          key={condition.id}
+                          className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors duration-200 ${
+                            formData.conditions.includes(condition.id)
+                              ? "bg-red-500/10 border-red-500/50"
+                              : "bg-zinc-900 border-zinc-800 hover:border-zinc-700"
+                          }`}
+                          onClick={() => toggleCondition(condition.id)}
+                          data-testid={`condition-${condition.id}`}
+                        >
+                          <Checkbox 
+                            checked={formData.conditions.includes(condition.id)}
+                            className="border-zinc-600"
+                          />
+                          <span className="text-sm text-zinc-300">{condition.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="outline" 
+                      onClick={() => setStep(2)} 
+                      className="flex-1 border-zinc-700"
+                    >
+                      Atrás
+                    </Button>
+                    <Button 
+                      onClick={handleRegister} 
+                      className="flex-1 bg-green-600 hover:bg-green-500"
+                      disabled={isLoading}
+                      data-testid="register-submit"
+                    >
+                      {isLoading ? "Creando..." : "Crear Cuenta"}
+                    </Button>
+                  </div>
+                </>
+              )}
+
+              {step === 1 && (
+                <p className="text-center text-sm text-zinc-500">
+                  ¿Ya tienes cuenta?{" "}
+                  <button 
+                    onClick={() => setMode("login")}
+                    className="text-green-500 hover:underline"
+                    data-testid="switch-to-login"
+                  >
+                    Inicia sesión
+                  </button>
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 // Navbar Component
-const Navbar = ({ onMenuClick, isMenuOpen }) => {
+const Navbar = ({ user, onAuthClick, onLogout, onProfileClick }) => {
   return (
     <nav 
       className="fixed top-0 w-full z-50 glass border-b border-white/5 h-16"
@@ -54,14 +517,50 @@ const Navbar = ({ onMenuClick, isMenuOpen }) => {
           </span>
         </div>
         
-        <button 
-          onClick={onMenuClick}
-          className="p-2 rounded-lg hover:bg-zinc-800/50 transition-colors duration-200"
-          data-testid="menu-toggle"
-          aria-label="Toggle menu"
-        >
-          {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-        </button>
+        {user ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button 
+                className="flex items-center gap-2 p-2 rounded-lg hover:bg-zinc-800/50 transition-colors duration-200"
+                data-testid="user-menu"
+              >
+                <div className="w-8 h-8 rounded-full bg-green-600/20 flex items-center justify-center">
+                  <User className="w-4 h-4 text-green-500" />
+                </div>
+                <span className="text-sm text-zinc-300 hidden sm:block">{user.name}</span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="bg-zinc-900 border-zinc-800 w-48">
+              <DropdownMenuItem 
+                onClick={onProfileClick}
+                className="text-zinc-300 focus:bg-zinc-800 cursor-pointer"
+                data-testid="profile-menu-item"
+              >
+                <Settings className="w-4 h-4 mr-2" />
+                Mi Perfil
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="bg-zinc-800" />
+              <DropdownMenuItem 
+                onClick={onLogout}
+                className="text-red-400 focus:bg-zinc-800 cursor-pointer"
+                data-testid="logout-menu-item"
+              >
+                <LogOut className="w-4 h-4 mr-2" />
+                Cerrar Sesión
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <Button 
+            onClick={onAuthClick}
+            variant="outline"
+            className="border-green-600 text-green-500 hover:bg-green-600/10"
+            data-testid="login-button"
+          >
+            <User className="w-4 h-4 mr-2" />
+            Entrar
+          </Button>
+        )}
       </div>
     </nav>
   );
@@ -131,14 +630,21 @@ const ScanButton = ({ onClick }) => {
   );
 };
 
-// Camera Modal Component
-const CameraModal = ({ isOpen, onClose, onCapture, isLoading }) => {
+// Camera Modal Component with native camera support
+const CameraModal = ({ isOpen, onClose, onCapture, isLoading, token }) => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
+  const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
 
   const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
     if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        toast.error("Por favor, selecciona una imagen válida");
+        return;
+      }
       setSelectedFile(file);
       const url = URL.createObjectURL(file);
       setPreviewUrl(url);
@@ -154,8 +660,7 @@ const CameraModal = ({ isOpen, onClose, onCapture, isLoading }) => {
       };
       reader.readAsDataURL(selectedFile);
     } else {
-      // Simulate capture without file
-      onCapture(null);
+      toast.error("Por favor, captura o sube una imagen primero");
     }
   };
 
@@ -163,6 +668,14 @@ const CameraModal = ({ isOpen, onClose, onCapture, isLoading }) => {
     setSelectedFile(null);
     setPreviewUrl(null);
     onClose();
+  };
+
+  const openCamera = () => {
+    cameraInputRef.current?.click();
+  };
+
+  const openGallery = () => {
+    fileInputRef.current?.click();
   };
 
   return (
@@ -174,7 +687,7 @@ const CameraModal = ({ isOpen, onClose, onCapture, isLoading }) => {
             Escanear Etiqueta
           </DialogTitle>
           <DialogDescription className="text-sm text-zinc-500">
-            Sube una foto de la etiqueta nutricional para analizarla
+            Toma una foto de la etiqueta nutricional o súbela desde tu galería
           </DialogDescription>
         </DialogHeader>
         
@@ -193,9 +706,9 @@ const CameraModal = ({ isOpen, onClose, onCapture, isLoading }) => {
               />
             ) : (
               <div className="text-center p-4">
-                <Upload className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
+                <Camera className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
                 <p className="text-sm text-zinc-500">
-                  Sube una foto de la etiqueta nutricional
+                  Captura o sube la etiqueta nutricional
                 </p>
               </div>
             )}
@@ -206,34 +719,58 @@ const CameraModal = ({ isOpen, onClose, onCapture, isLoading }) => {
             )}
           </div>
 
+          {/* Hidden file inputs */}
+          <input 
+            ref={cameraInputRef}
+            type="file" 
+            accept="image/*" 
+            capture="environment"
+            onChange={handleFileSelect}
+            className="hidden"
+            data-testid="camera-input"
+          />
+          <input 
+            ref={fileInputRef}
+            type="file" 
+            accept="image/*"
+            onChange={handleFileSelect}
+            className="hidden"
+            data-testid="file-input"
+          />
+
           {/* Actions */}
           <div className="w-full flex flex-col gap-3">
             {!isLoading && (
               <>
-                <label className="file-input-wrapper">
+                <div className="grid grid-cols-2 gap-3">
                   <Button 
+                    onClick={openCamera}
                     variant="outline" 
-                    className="w-full border-zinc-700 bg-zinc-900/50 hover:bg-zinc-800 text-zinc-300"
-                    data-testid="upload-button"
+                    className="border-zinc-700 bg-zinc-900/50 hover:bg-zinc-800 text-zinc-300"
+                    data-testid="open-camera-button"
+                  >
+                    <Camera className="w-4 h-4 mr-2" />
+                    Cámara
+                  </Button>
+                  <Button 
+                    onClick={openGallery}
+                    variant="outline" 
+                    className="border-zinc-700 bg-zinc-900/50 hover:bg-zinc-800 text-zinc-300"
+                    data-testid="open-gallery-button"
                   >
                     <Upload className="w-4 h-4 mr-2" />
-                    {selectedFile ? 'Cambiar imagen' : 'Subir imagen'}
+                    Galería
                   </Button>
-                  <input 
-                    type="file" 
-                    accept="image/*" 
-                    onChange={handleFileSelect}
-                    data-testid="file-input"
-                  />
-                </label>
+                </div>
 
                 <Button 
                   onClick={handleCapture}
-                  className="w-full bg-green-600 hover:bg-green-500 text-white neon-glow"
+                  disabled={!selectedFile}
+                  className="w-full bg-green-600 hover:bg-green-500 text-white neon-glow disabled:opacity-50 disabled:cursor-not-allowed"
                   data-testid="analyze-button"
                 >
                   <ScanLine className="w-4 h-4 mr-2" />
-                  {selectedFile ? 'Analizar imagen' : 'Usar ejemplo'}
+                  Analizar Etiqueta
                 </Button>
               </>
             )}
@@ -242,7 +779,10 @@ const CameraModal = ({ isOpen, onClose, onCapture, isLoading }) => {
               <div className="text-center py-4">
                 <div className="loading-spinner animate-spin-slow mx-auto mb-4" />
                 <p className="text-sm text-zinc-400 animate-pulse">
-                  Analizando etiqueta nutricional...
+                  Analizando con IA...
+                </p>
+                <p className="text-xs text-zinc-600 mt-2">
+                  Gemini 3 Flash está procesando la imagen
                 </p>
               </div>
             )}
@@ -250,6 +790,41 @@ const CameraModal = ({ isOpen, onClose, onCapture, isLoading }) => {
         </div>
       </DialogContent>
     </Dialog>
+  );
+};
+
+// Personalized Alert Component
+const PersonalizedAlertCard = ({ alert }) => {
+  const getAlertStyles = (type) => {
+    switch (type) {
+      case "danger":
+        return "bg-red-500/10 border-red-500/30 text-red-400";
+      case "warning":
+        return "bg-yellow-500/10 border-yellow-500/30 text-yellow-400";
+      default:
+        return "bg-blue-500/10 border-blue-500/30 text-blue-400";
+    }
+  };
+
+  const getIcon = (type) => {
+    switch (type) {
+      case "danger":
+        return <AlertCircle className="w-5 h-5" />;
+      case "warning":
+        return <AlertTriangle className="w-5 h-5" />;
+      default:
+        return <Info className="w-5 h-5" />;
+    }
+  };
+
+  return (
+    <div 
+      className={`p-4 rounded-xl border ${getAlertStyles(alert.type)} flex items-start gap-3`}
+      data-testid={`personalized-alert-${alert.type}`}
+    >
+      {getIcon(alert.type)}
+      <p className="text-sm font-medium">{alert.message}</p>
+    </div>
   );
 };
 
@@ -289,7 +864,7 @@ const NutrientCard = ({ nutrient, index }) => {
 
   return (
     <div 
-      className={`glass-light p-4 rounded-2xl opacity-0 animate-fade-in-up stagger-${index + 1}`}
+      className={`glass-light p-4 rounded-2xl opacity-0 animate-fade-in-up stagger-${Math.min(index + 1, 8)}`}
       data-testid={`nutrient-card-${nutrient.name.toLowerCase().replace(/\s+/g, '-')}`}
     >
       <div className="flex items-start justify-between mb-3">
@@ -372,7 +947,7 @@ const HealthScore = ({ score }) => {
 };
 
 // Results View Component
-const ResultsView = ({ result, onBack }) => {
+const ResultsView = ({ result, onBack, user }) => {
   if (!result) return null;
 
   return (
@@ -393,21 +968,30 @@ const ResultsView = ({ result, onBack }) => {
               Resultado del Análisis
             </h1>
             <p className="text-sm text-zinc-500">
-              {new Date(result.timestamp).toLocaleString('es-ES')}
+              Analizado con Gemini 3 Flash
             </p>
           </div>
         </div>
+
+        {/* Personalized Alerts */}
+        {result.personalized_alerts && result.personalized_alerts.length > 0 && (
+          <div className="mb-6 space-y-3 opacity-0 animate-fade-in-up">
+            <h3 className="text-sm font-medium text-zinc-400 flex items-center gap-2 px-1">
+              <Shield className="w-4 h-4 text-green-500" />
+              Alertas Personalizadas para Ti
+            </h3>
+            {result.personalized_alerts.map((alert, index) => (
+              <PersonalizedAlertCard key={index} alert={alert} />
+            ))}
+          </div>
+        )}
 
         {/* Product Info */}
         <Card className="bg-zinc-900/50 border-zinc-800 mb-6 opacity-0 animate-fade-in-up stagger-1">
           <CardContent className="p-6">
             <div className="flex items-start gap-4">
               <div className="w-20 h-20 rounded-xl bg-zinc-800 flex items-center justify-center overflow-hidden">
-                <img 
-                  src="https://images.unsplash.com/photo-1702724122866-8898b15ebeac?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NjZ8MHwxfHNlYXJjaHwxfHxmb29kJTIwcHJvZHVjdCUyMHBhY2thZ2luZyUyMGJvdHRsZSUyMGphcnxlbnwwfHx8fDE3NzI1NDkyOTl8MA&ixlib=rb-4.1.0&q=85"
-                  alt={result.product_name}
-                  className="w-full h-full object-cover"
-                />
+                <Cookie className="w-10 h-10 text-zinc-600" />
               </div>
               <div className="flex-1">
                 <h2 className="text-lg font-semibold text-zinc-50" data-testid="product-name">
@@ -442,8 +1026,20 @@ const ResultsView = ({ result, onBack }) => {
           </div>
         </div>
 
+        {/* Ingredients */}
+        {result.ingredients && result.ingredients.length > 0 && (
+          <Card className="bg-zinc-900/50 border-zinc-800 mb-6 opacity-0 animate-fade-in-up stagger-5">
+            <CardContent className="p-4">
+              <h3 className="text-sm font-medium text-zinc-400 mb-3">Ingredientes</h3>
+              <p className="text-sm text-zinc-500 leading-relaxed">
+                {result.ingredients.join(", ")}
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Warnings */}
-        {result.warnings.length > 0 && (
+        {result.warnings && result.warnings.length > 0 && (
           <Card className="bg-yellow-500/5 border-yellow-500/20 mb-6 opacity-0 animate-fade-in-up stagger-6">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
@@ -467,7 +1063,7 @@ const ResultsView = ({ result, onBack }) => {
         )}
 
         {/* Recommendations */}
-        {result.recommendations.length > 0 && (
+        {result.recommendations && result.recommendations.length > 0 && (
           <Card className="bg-green-500/5 border-green-500/20 opacity-0 animate-fade-in-up stagger-7">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
@@ -506,9 +1102,208 @@ const ResultsView = ({ result, onBack }) => {
   );
 };
 
+// Profile Modal Component
+const ProfileModal = ({ isOpen, onClose, user, onUpdate }) => {
+  const [formData, setFormData] = useState({
+    name: user?.name || "",
+    weight: user?.profile?.weight || "",
+    height: user?.profile?.height || "",
+    sex: user?.profile?.sex || "",
+    allergies: user?.profile?.allergies || [],
+    conditions: user?.profile?.conditions || []
+  });
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      setFormData({
+        name: user.name || "",
+        weight: user.profile?.weight || "",
+        height: user.profile?.height || "",
+        sex: user.profile?.sex || "",
+        allergies: user.profile?.allergies || [],
+        conditions: user.profile?.conditions || []
+      });
+    }
+  }, [user]);
+
+  const toggleAllergy = (id) => {
+    setFormData(prev => ({
+      ...prev,
+      allergies: prev.allergies.includes(id)
+        ? prev.allergies.filter(a => a !== id)
+        : [...prev.allergies, id]
+    }));
+  };
+
+  const toggleCondition = (id) => {
+    setFormData(prev => ({
+      ...prev,
+      conditions: prev.conditions.includes(id)
+        ? prev.conditions.filter(c => c !== id)
+        : [...prev.conditions, id]
+    }));
+  };
+
+  const handleSave = async () => {
+    setIsLoading(true);
+    try {
+      await onUpdate({
+        name: formData.name,
+        profile: {
+          weight: formData.weight ? parseFloat(formData.weight) : null,
+          height: formData.height ? parseFloat(formData.height) : null,
+          sex: formData.sex || null,
+          allergies: formData.allergies,
+          conditions: formData.conditions
+        }
+      });
+      toast.success("Perfil actualizado");
+      onClose();
+    } catch (error) {
+      toast.error("Error al actualizar el perfil");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="bg-zinc-950 border-zinc-800 max-w-md mx-auto max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-xl font-semibold text-zinc-50 flex items-center gap-2">
+            <Settings className="w-5 h-5 text-green-500" />
+            Mi Perfil
+          </DialogTitle>
+          <DialogDescription className="text-sm text-zinc-500">
+            Actualiza tu información para recibir alertas personalizadas
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-6 pt-4">
+          <div className="space-y-2">
+            <Label className="text-zinc-300">Nombre</Label>
+            <Input
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              className="bg-zinc-900 border-zinc-800 text-zinc-50"
+              data-testid="profile-name"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label className="text-zinc-300 flex items-center gap-1">
+                <Scale className="w-4 h-4" /> Peso (kg)
+              </Label>
+              <Input
+                type="number"
+                value={formData.weight}
+                onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
+                className="bg-zinc-900 border-zinc-800 text-zinc-50"
+                data-testid="profile-weight"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-zinc-300 flex items-center gap-1">
+                <Ruler className="w-4 h-4" /> Altura (cm)
+              </Label>
+              <Input
+                type="number"
+                value={formData.height}
+                onChange={(e) => setFormData({ ...formData, height: e.target.value })}
+                className="bg-zinc-900 border-zinc-800 text-zinc-50"
+                data-testid="profile-height"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-zinc-300">Sexo</Label>
+            <Select 
+              value={formData.sex} 
+              onValueChange={(value) => setFormData({ ...formData, sex: value })}
+            >
+              <SelectTrigger className="bg-zinc-900 border-zinc-800 text-zinc-50" data-testid="profile-sex">
+                <SelectValue placeholder="Selecciona" />
+              </SelectTrigger>
+              <SelectContent className="bg-zinc-900 border-zinc-800">
+                <SelectItem value="male">Masculino</SelectItem>
+                <SelectItem value="female">Femenino</SelectItem>
+                <SelectItem value="other">Otro</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-3">
+            <Label className="text-zinc-300 flex items-center gap-1">
+              <AlertTriangle className="w-4 h-4 text-yellow-500" /> Alergias
+            </Label>
+            <div className="grid grid-cols-2 gap-2">
+              {ALLERGY_OPTIONS.map((allergy) => (
+                <div 
+                  key={allergy.id}
+                  className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors duration-200 ${
+                    formData.allergies.includes(allergy.id)
+                      ? "bg-yellow-500/10 border-yellow-500/50"
+                      : "bg-zinc-900 border-zinc-800 hover:border-zinc-700"
+                  }`}
+                  onClick={() => toggleAllergy(allergy.id)}
+                >
+                  <Checkbox 
+                    checked={formData.allergies.includes(allergy.id)}
+                    className="border-zinc-600"
+                  />
+                  <span className="text-sm text-zinc-300">{allergy.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <Label className="text-zinc-300 flex items-center gap-1">
+              <Heart className="w-4 h-4 text-red-500" /> Condiciones de Salud
+            </Label>
+            <div className="grid grid-cols-2 gap-2">
+              {CONDITION_OPTIONS.map((condition) => (
+                <div 
+                  key={condition.id}
+                  className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors duration-200 ${
+                    formData.conditions.includes(condition.id)
+                      ? "bg-red-500/10 border-red-500/50"
+                      : "bg-zinc-900 border-zinc-800 hover:border-zinc-700"
+                  }`}
+                  onClick={() => toggleCondition(condition.id)}
+                >
+                  <Checkbox 
+                    checked={formData.conditions.includes(condition.id)}
+                    className="border-zinc-600"
+                  />
+                  <span className="text-sm text-zinc-300">{condition.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <Button 
+            onClick={handleSave}
+            className="w-full bg-green-600 hover:bg-green-500"
+            disabled={isLoading}
+            data-testid="profile-save"
+          >
+            {isLoading ? "Guardando..." : "Guardar Cambios"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 // Home Page Component
 const Home = () => {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const auth = useAuth();
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [analysisResult, setAnalysisResult] = useState(null);
@@ -521,19 +1316,27 @@ const Home = () => {
     setIsLoading(true);
     
     try {
+      const headers = {
+        'Content-Type': 'application/json'
+      };
+      if (auth.token) {
+        headers['Authorization'] = `Bearer ${auth.token}`;
+      }
+
       const response = await axios.post(`${API}/analyze`, {
         image_base64: imageBase64
-      });
+      }, { headers });
       
       setAnalysisResult(response.data);
       setIsCameraOpen(false);
       toast.success('¡Análisis completado!', {
-        description: 'Se ha analizado la etiqueta correctamente.'
+        description: 'La etiqueta ha sido analizada con Gemini 3 Flash'
       });
     } catch (error) {
       console.error('Error analyzing label:', error);
+      const errorMessage = error.response?.data?.detail || 'No se pudo completar el análisis';
       toast.error('Error al analizar', {
-        description: 'No se pudo completar el análisis. Intenta de nuevo.'
+        description: errorMessage
       });
     } finally {
       setIsLoading(false);
@@ -544,24 +1347,64 @@ const Home = () => {
     setAnalysisResult(null);
   }, []);
 
+  const handleLogout = async () => {
+    await auth.logout();
+    toast.success("Sesión cerrada");
+  };
+
+  if (auth.loading) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <div className="loading-spinner animate-spin-slow" />
+      </div>
+    );
+  }
+
   // If we have results, show results view
   if (analysisResult) {
     return (
       <>
-        <Navbar onMenuClick={() => setIsMenuOpen(!isMenuOpen)} isMenuOpen={isMenuOpen} />
-        <ResultsView result={analysisResult} onBack={handleBack} />
+        <Navbar 
+          user={auth.user} 
+          onAuthClick={() => setShowAuthModal(true)}
+          onLogout={handleLogout}
+          onProfileClick={() => setShowProfileModal(true)}
+        />
+        <ResultsView result={analysisResult} onBack={handleBack} user={auth.user} />
         <Footer />
+        <ProfileModal 
+          isOpen={showProfileModal}
+          onClose={() => setShowProfileModal(false)}
+          user={auth.user}
+          onUpdate={auth.updateProfile}
+        />
+        <Toaster position="top-center" richColors />
       </>
     );
   }
 
   return (
     <>
-      <Navbar onMenuClick={() => setIsMenuOpen(!isMenuOpen)} isMenuOpen={isMenuOpen} />
+      <Navbar 
+        user={auth.user} 
+        onAuthClick={() => setShowAuthModal(true)}
+        onLogout={handleLogout}
+        onProfileClick={() => setShowProfileModal(true)}
+      />
       
       {/* Hero Section */}
       <main className="hero-bg min-h-screen flex flex-col" data-testid="home-page">
         <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 pt-24 pb-16">
+          {/* User Welcome */}
+          {auth.user && (
+            <div className="mb-6 opacity-0 animate-fade-in">
+              <Badge className="bg-green-600/20 text-green-400 border-green-600/30">
+                <User className="w-3 h-3 mr-1" />
+                Hola, {auth.user.name}
+              </Badge>
+            </div>
+          )}
+
           {/* Main Content */}
           <div className="text-center max-w-lg mx-auto mb-12 opacity-0 animate-fade-in-up">
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-6 font-['Manrope']">
@@ -570,7 +1413,7 @@ const Home = () => {
               <span className="text-zinc-50">tu alimentación</span>
             </h1>
             <p className="text-base text-zinc-400 leading-relaxed max-w-md mx-auto">
-              Analiza las etiquetas nutricionales de tus productos y toma decisiones más saludables con inteligencia artificial.
+              Analiza las etiquetas nutricionales con inteligencia artificial y recibe alertas personalizadas según tu perfil de salud.
             </p>
           </div>
 
@@ -590,21 +1433,43 @@ const Home = () => {
               <div className="w-12 h-12 rounded-xl bg-zinc-900/80 border border-zinc-800 flex items-center justify-center mx-auto mb-2">
                 <Zap className="w-5 h-5 text-green-500" />
               </div>
-              <p className="text-xs text-zinc-500">Análisis<br/>Instantáneo</p>
+              <p className="text-xs text-zinc-500">Análisis<br/>con IA</p>
             </div>
             <div className="text-center">
               <div className="w-12 h-12 rounded-xl bg-zinc-900/80 border border-zinc-800 flex items-center justify-center mx-auto mb-2">
-                <Info className="w-5 h-5 text-green-500" />
+                <Shield className="w-5 h-5 text-green-500" />
               </div>
-              <p className="text-xs text-zinc-500">Info<br/>Detallada</p>
+              <p className="text-xs text-zinc-500">Alertas<br/>Personalizadas</p>
             </div>
             <div className="text-center">
               <div className="w-12 h-12 rounded-xl bg-zinc-900/80 border border-zinc-800 flex items-center justify-center mx-auto mb-2">
                 <CheckCircle className="w-5 h-5 text-green-500" />
               </div>
-              <p className="text-xs text-zinc-500">Recomendaciones<br/>Personalizadas</p>
+              <p className="text-xs text-zinc-500">Recomendaciones<br/>Saludables</p>
             </div>
           </div>
+
+          {/* Login prompt for non-authenticated users */}
+          {!auth.user && (
+            <div className="mt-12 opacity-0 animate-fade-in-up stagger-5">
+              <Card className="bg-zinc-900/30 border-zinc-800 max-w-sm">
+                <CardContent className="p-4 text-center">
+                  <Shield className="w-8 h-8 text-green-500 mx-auto mb-2" />
+                  <p className="text-sm text-zinc-400 mb-3">
+                    Crea una cuenta para recibir alertas basadas en tus alergias y condiciones de salud
+                  </p>
+                  <Button 
+                    onClick={() => setShowAuthModal(true)}
+                    variant="outline"
+                    className="border-green-600 text-green-500 hover:bg-green-600/10"
+                    data-testid="cta-register"
+                  >
+                    Crear Cuenta Gratis
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </div>
       </main>
 
@@ -616,6 +1481,23 @@ const Home = () => {
         onClose={() => setIsCameraOpen(false)}
         onCapture={handleCapture}
         isLoading={isLoading}
+        token={auth.token}
+      />
+
+      {/* Auth Modal */}
+      <AuthModal 
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        onSuccess={() => {}}
+        initialMode="login"
+      />
+
+      {/* Profile Modal */}
+      <ProfileModal 
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        user={auth.user}
+        onUpdate={auth.updateProfile}
       />
 
       {/* Toast notifications */}
