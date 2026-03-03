@@ -40,6 +40,9 @@ class UserProfile(BaseModel):
     sex: Optional[str] = None  # male, female, other
     allergies: List[str] = []  # gluten, lactose, nuts, eggs, shellfish, soy, etc.
     conditions: List[str] = []  # celiac, diabetic, hypertensive, etc.
+    activity_level: Optional[str] = None  # sedentary, light, moderate, active, very_active
+    goal: Optional[str] = None  # lose_weight, maintain, gain_muscle, health
+    strictness_level: Optional[str] = "normal"  # relaxed, normal, strict, very_strict
 
 class UserCreate(BaseModel):
     email: str
