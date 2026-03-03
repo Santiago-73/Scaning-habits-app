@@ -173,6 +173,9 @@ const CameraModal = ({ isOpen, onClose, onCapture, isLoading }) => {
             <Camera className="w-5 h-5 text-green-500" />
             Escanear Etiqueta
           </DialogTitle>
+          <DialogDescription className="text-sm text-zinc-500">
+            Sube una foto de la etiqueta nutricional para analizarla
+          </DialogDescription>
         </DialogHeader>
         
         <div className="p-6 flex flex-col items-center gap-6">
