@@ -481,6 +481,183 @@ async def get_scan_history(user: dict = Depends(require_user)):
     
     return history
 
+# ==================== CHAT ROUTES ====================
+
+def get_personality_prompt(strictness_level: str) -> str:
+    """Get AI personality based on strictness level"""
+    personalities = {
+        "relaxed": """Eres un nutricionista amigable y relajado. 
+        - Sé comprensivo y no juzgues las elecciones alimentarias
+        - Da consejos suaves y positivos
+        - Si algo no es muy saludable, menciónalo con tacto
+        - Usa un tono casual y cercano""",
+        
+        "normal": """Eres un nutricionista profesional y equilibrado.
+        - Da información objetiva y clara
+        - Señala tanto lo positivo como lo negativo
+        - Ofrece alternativas cuando sea necesario
+        - Mantén un tono profesional pero accesible""",
+        
+        "strict": """Eres un nutricionista estricto y directo.
+        - Sé honesto sobre los aspectos negativos de los alimentos
+        - Critica los ultraprocesados y azúcares añadidos
+        - No suavices la verdad, el usuario quiere claridad
+        - Da recomendaciones firmes para mejorar la dieta""",
+        
+        "very_strict": """Eres un nutricionista MUY EXIGENTE y sin filtros.
+        - Sé brutalmente honesto sobre la comida basura y ultraprocesados
+        - Usa sarcasmo cuando el producto sea claramente poco saludable
+        - Compara los ingredientes dañinos con lo que realmente son (ej: "esto es básicamente azúcar disfrazada")
+        - No tengas piedad con los productos llenos de aditivos
+        - El usuario quiere la verdad cruda, dásela
+        - Si algo es malo, dilo claramente: "esto es veneno procesado" o "tu cuerpo no necesita esta basura"
+        - Pero también reconoce y celebra cuando algo es genuinamente saludable"""
+    }
+    return personalities.get(strictness_level, personalities["normal"])
+
+@api_router.post("/chat", response_model=ChatResponse)
+async def chat_with_ai(request: ChatRequest, user: Optional[dict] = Depends(get_current_user)):
+    """Chat with AI about the analyzed product"""
+    
+    # Get analysis from database
+    analysis = await db.scan_history.find_one({"id": request.analysis_id}, {"_id": 0})
+    if not analysis:
+        raise HTTPException(status_code=404, detail="Análisis no encontrado")
+    
+    # Get or create chat history for this analysis
+    chat_doc = await db.chat_history.find_one({"analysis_id": request.analysis_id}, {"_id": 0})
+    
+    if not chat_doc:
+        chat_doc = {
+            "analysis_id": request.analysis_id,
+            "user_id": user["id"] if user else None,
+            "messages": [],
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.chat_history.insert_one(chat_doc)
+    
+    # Build user context
+    user_context = ""
+    strictness = "normal"
+    if user:
+        profile = user.get("profile", {})
+        strictness = profile.get("strictness_level", "normal")
+        
+        if profile.get("weight"):
+            user_context += f"\n- Peso: {profile['weight']} kg"
+        if profile.get("height"):
+            user_context += f"\n- Altura: {profile['height']} cm"
+        if profile.get("sex"):
+            sex_map = {"male": "Masculino", "female": "Femenino", "other": "Otro"}
+            user_context += f"\n- Sexo: {sex_map.get(profile['sex'], profile['sex'])}"
+        if profile.get("activity_level"):
+            activity_map = {"sedentary": "Sedentario", "light": "Ligera", "moderate": "Moderada", "active": "Activa", "very_active": "Muy activa"}
+            user_context += f"\n- Actividad física: {activity_map.get(profile['activity_level'], profile['activity_level'])}"
+        if profile.get("goal"):
+            goal_map = {"lose_weight": "Perder peso", "maintain": "Mantener peso", "gain_muscle": "Ganar músculo", "health": "Mejorar salud"}
+            user_context += f"\n- Objetivo: {goal_map.get(profile['goal'], profile['goal'])}"
+        if profile.get("allergies"):
+            user_context += f"\n- Alergias: {', '.join(profile['allergies'])}"
+        if profile.get("conditions"):
+            user_context += f"\n- Condiciones de salud: {', '.join(profile['conditions'])}"
+    
+    # Build analysis context
+    analysis_context = f"""
+PRODUCTO ANALIZADO:
+- Nombre: {analysis.get('product_name', 'Desconocido')}
+- Marca: {analysis.get('brand', 'Desconocida')}
+- Porción: {analysis.get('serving_size', 'No especificada')}
+- Puntuación de salud: {analysis.get('health_score', 'N/A')}/100
+
+INFORMACIÓN NUTRICIONAL:
+"""
+    for nutrient in analysis.get('nutrients', []):
+        analysis_context += f"- {nutrient['name']}: {nutrient['value']} {nutrient['unit']}"
+        if nutrient.get('percentage'):
+            analysis_context += f" ({nutrient['percentage']}% VD)"
+        analysis_context += f" - Estado: {nutrient.get('status', 'normal')}\n"
+    
+    if analysis.get('ingredients'):
+        analysis_context += f"\nINGREDIENTES: {', '.join(analysis['ingredients'])}"
+    
+    if analysis.get('warnings'):
+        analysis_context += f"\nADVERTENCIAS: {', '.join(analysis['warnings'])}"
+    
+    # Build conversation history
+    conversation_history = ""
+    for msg in chat_doc.get("messages", [])[-10:]:  # Last 10 messages for context
+        role = "Usuario" if msg["role"] == "user" else "Asistente"
+        conversation_history += f"\n{role}: {msg['content']}"
+    
+    # Get personality based on strictness
+    personality = get_personality_prompt(strictness)
+    
+    system_prompt = f"""{personality}
+
+CONTEXTO DEL ANÁLISIS:
+{analysis_context}
+
+{"PERFIL DEL USUARIO:" + user_context if user_context else ""}
+
+{"CONVERSACIÓN PREVIA:" + conversation_history if conversation_history else ""}
+
+INSTRUCCIONES:
+- Responde en ESPAÑOL
+- Sé conciso pero informativo (2-4 frases máximo por respuesta)
+- Basa tus respuestas en los datos del análisis y el perfil del usuario
+- Si el usuario pregunta algo específico sobre un nutriente, dale datos concretos
+- Adapta tu tono según el nivel de exigencia configurado
+- Si hay una imagen adjunta, analízala en contexto con la pregunta"""
+
+    try:
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=f"nutriscan-chat-{request.analysis_id}",
+            system_message=system_prompt
+        ).with_model("gemini", "gemini-3-flash-preview")
+        
+        # Build message with optional image
+        if request.image_base64:
+            image_content = ImageContent(image_base64=request.image_base64)
+            user_message = UserMessage(
+                text=request.message,
+                image_contents=[image_content]
+            )
+        else:
+            user_message = UserMessage(text=request.message)
+        
+        response = await chat.send_message(user_message)
+        
+        # Save messages to history
+        await db.chat_history.update_one(
+            {"analysis_id": request.analysis_id},
+            {"$push": {"messages": {
+                "$each": [
+                    {"role": "user", "content": request.message, "timestamp": datetime.now(timezone.utc).isoformat()},
+                    {"role": "assistant", "content": response, "timestamp": datetime.now(timezone.utc).isoformat()}
+                ]
+            }}}
+        )
+        
+        return ChatResponse(response=response)
+        
+    except Exception as e:
+        logging.error(f"Chat error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error en el chat: {str(e)}")
+
+@api_router.get("/chat/{analysis_id}")
+async def get_chat_history(analysis_id: str, user: dict = Depends(require_user)):
+    """Get chat history for an analysis"""
+    chat_doc = await db.chat_history.find_one(
+        {"analysis_id": analysis_id, "user_id": user["id"]}, 
+        {"_id": 0}
+    )
+    
+    if not chat_doc:
+        return {"messages": []}
+    
+    return {"messages": chat_doc.get("messages", [])}
+
 # Include router and middleware
 app.include_router(api_router)
 
