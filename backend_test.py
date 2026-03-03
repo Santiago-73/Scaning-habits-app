@@ -140,10 +140,14 @@ class NutriScanAPITester:
         
         if success:
             user = response
+            profile = user.get('profile', {})
             print(f"   ✅ User name: {user.get('name')}")
             print(f"   ✅ User email: {user.get('email')}")
-            print(f"   ✅ Profile allergies: {user.get('profile', {}).get('allergies', [])}")
-            print(f"   ✅ Profile conditions: {user.get('profile', {}).get('conditions', [])}")
+            print(f"   ✅ Profile allergies: {profile.get('allergies', [])}")
+            print(f"   ✅ Profile conditions: {profile.get('conditions', [])}")
+            print(f"   ✅ Activity level: {profile.get('activity_level', 'N/A')}")
+            print(f"   ✅ Goal: {profile.get('goal', 'N/A')}")
+            print(f"   ✅ Strictness level: {profile.get('strictness_level', 'N/A')}")
         return success
 
     def test_analyze_endpoint(self):
