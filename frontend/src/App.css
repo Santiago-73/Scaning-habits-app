@@ -1,34 +1,256 @@
-.App-logo {
-    height: 40vmin;
-    pointer-events: none;
+/* Hero background */
+.hero-bg {
+    position: relative;
+    background-image: url('https://images.unsplash.com/photo-1612287460861-fe8f50a81811?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzF8MHwxfHNlYXJjaHwxfHxoZWFsdGh5JTIwZnJlc2glMjBmb29kJTIwZGFyayUyMGJhY2tncm91bmR8ZW58MHx8fHwxNzcyNTQ5Mjk4fDA&ixlib=rb-4.1.0&q=85');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
-    }
+.hero-bg::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to bottom, rgba(9, 9, 11, 0.92), rgba(9, 9, 11, 0.98));
 }
 
-.App-header {
-    background-color: #0f0f10;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
+/* Scan button animation */
+.scan-button {
+    position: relative;
+    overflow: hidden;
+}
+
+.scan-button::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 60%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.scan-button:hover::before {
+    opacity: 1;
+}
+
+/* Camera view finder */
+.viewfinder {
+    position: relative;
+    width: 280px;
+    height: 320px;
+    border: 2px solid rgba(34, 197, 94, 0.5);
+    border-radius: 16px;
+}
+
+.viewfinder::before,
+.viewfinder::after {
+    content: '';
+    position: absolute;
+    width: 40px;
+    height: 40px;
+    border-color: var(--nutri-primary);
+    border-style: solid;
+}
+
+.viewfinder::before {
+    top: -2px;
+    left: -2px;
+    border-width: 4px 0 0 4px;
+    border-top-left-radius: 16px;
+}
+
+.viewfinder::after {
+    bottom: -2px;
+    right: -2px;
+    border-width: 0 4px 4px 0;
+    border-bottom-right-radius: 16px;
+}
+
+.viewfinder-corner-tr,
+.viewfinder-corner-bl {
+    position: absolute;
+    width: 40px;
+    height: 40px;
+    border-color: var(--nutri-primary);
+    border-style: solid;
+}
+
+.viewfinder-corner-tr {
+    top: -2px;
+    right: -2px;
+    border-width: 4px 4px 0 0;
+    border-top-right-radius: 16px;
+}
+
+.viewfinder-corner-bl {
+    bottom: -2px;
+    left: -2px;
+    border-width: 0 0 4px 4px;
+    border-bottom-left-radius: 16px;
+}
+
+/* Scan line */
+.scan-line {
+    position: absolute;
+    left: 10%;
+    width: 80%;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, var(--nutri-primary), transparent);
+    border-radius: 2px;
+    box-shadow: 0 0 20px var(--nutri-primary), 0 0 40px var(--nutri-primary);
+}
+
+/* Progress circle */
+.progress-ring {
+    transform: rotate(-90deg);
+}
+
+.progress-ring-circle {
+    stroke-dasharray: 283;
+    stroke-dashoffset: 283;
+    transition: stroke-dashoffset 0.5s ease;
+}
+
+/* Nutrient bar */
+.nutrient-bar {
+    height: 6px;
+    border-radius: 3px;
+    background: var(--nutri-surface-highlight);
+    overflow: hidden;
+}
+
+.nutrient-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.6s ease-out;
+}
+
+/* Modal backdrop */
+.modal-backdrop {
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+/* File input styling */
+.file-input-wrapper {
+    position: relative;
+    overflow: hidden;
+}
+
+.file-input-wrapper input[type="file"] {
+    position: absolute;
+    left: 0;
+    top: 0;
+    opacity: 0;
+    width: 100%;
+    height: 100%;
+    cursor: pointer;
+}
+
+/* Health score circle */
+.health-score-circle {
+    position: relative;
+    width: 140px;
+    height: 140px;
+}
+
+.health-score-bg {
+    fill: none;
+    stroke: var(--nutri-surface-highlight);
+    stroke-width: 10;
+}
+
+.health-score-fill {
+    fill: none;
+    stroke-width: 10;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 1s ease-out;
+}
+
+/* Loading spinner */
+.loading-spinner {
+    width: 48px;
+    height: 48px;
+    border: 3px solid var(--nutri-surface-highlight);
+    border-top-color: var(--nutri-primary);
+    border-radius: 50%;
+}
+
+/* Tooltip */
+.tooltip {
+    position: relative;
+}
+
+.tooltip::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 8px 12px;
+    background: var(--nutri-surface);
+    border: 1px solid var(--nutri-border);
+    border-radius: 8px;
+    font-size: 12px;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.tooltip:hover::after {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Tag styles */
+.tag {
+    display: inline-flex;
     align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
+    padding: 4px 12px;
+    border-radius: 9999px;
+    font-size: 12px;
+    font-weight: 500;
 }
 
-.App-link {
-    color: #61dafb;
+.tag-warning {
+    background: rgba(234, 179, 8, 0.15);
+    color: #eab308;
+    border: 1px solid rgba(234, 179, 8, 0.3);
 }
 
-@keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
+.tag-good {
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.tag-danger {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+/* Focus styles */
+button:focus-visible,
+input:focus-visible {
+    outline: 2px solid var(--nutri-primary);
+    outline-offset: 2px;
+}
+
+/* Mobile optimizations */
+@media (max-width: 640px) {
+    .viewfinder {
+        width: 240px;
+        height: 280px;
     }
-    to {
-        transform: rotate(360deg);
+    
+    .health-score-circle {
+        width: 120px;
+        height: 120px;
     }
 }
