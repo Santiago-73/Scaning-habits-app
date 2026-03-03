@@ -205,7 +205,10 @@ const AuthModal = ({ isOpen, onClose, onSuccess, initialMode = "login" }) => {
     height: "",
     sex: "",
     allergies: [],
-    conditions: []
+    conditions: [],
+    activity_level: "",
+    goal: "",
+    strictness_level: "normal"
   });
 
   const { login, register } = useAuth();
@@ -214,7 +217,8 @@ const AuthModal = ({ isOpen, onClose, onSuccess, initialMode = "login" }) => {
     setFormData({
       name: "", email: "", password: "",
       weight: "", height: "", sex: "",
-      allergies: [], conditions: []
+      allergies: [], conditions: [],
+      activity_level: "", goal: "", strictness_level: "normal"
     });
     setStep(1);
     setMode(initialMode);
