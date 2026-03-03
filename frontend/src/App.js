@@ -1370,6 +1370,56 @@ const ProfileModal = ({ isOpen, onClose }) => {
             </div>
           </div>
 
+          {/* Activity & Goal */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label className="text-zinc-300 flex items-center gap-1"><Activity className="w-4 h-4" /> Actividad</Label>
+              <Select value={formData.activity_level} onValueChange={(value) => setFormData({ ...formData, activity_level: value })}>
+                <SelectTrigger className="bg-zinc-900 border-zinc-800 text-zinc-50">
+                  <SelectValue placeholder="Selecciona" />
+                </SelectTrigger>
+                <SelectContent className="bg-zinc-900 border-zinc-800">
+                  {ACTIVITY_OPTIONS.map(opt => (
+                    <SelectItem key={opt.id} value={opt.id}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-zinc-300 flex items-center gap-1"><Target className="w-4 h-4" /> Objetivo</Label>
+              <Select value={formData.goal} onValueChange={(value) => setFormData({ ...formData, goal: value })}>
+                <SelectTrigger className="bg-zinc-900 border-zinc-800 text-zinc-50">
+                  <SelectValue placeholder="Selecciona" />
+                </SelectTrigger>
+                <SelectContent className="bg-zinc-900 border-zinc-800">
+                  {GOAL_OPTIONS.map(opt => (
+                    <SelectItem key={opt.id} value={opt.id}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Strictness Level */}
+          <div className="space-y-3">
+            <Label className="text-zinc-300 flex items-center gap-1">
+              <MessageCircle className="w-4 h-4 text-green-500" /> Nivel de Exigencia del Chat
+            </Label>
+            <div className="grid grid-cols-2 gap-2">
+              {STRICTNESS_OPTIONS.map((opt) => (
+                <div 
+                  key={opt.id} 
+                  className={`p-3 rounded-lg border cursor-pointer transition-colors duration-200 ${formData.strictness_level === opt.id ? "bg-green-500/10 border-green-500/50" : "bg-zinc-900 border-zinc-800 hover:border-zinc-700"}`} 
+                  onClick={() => setFormData({ ...formData, strictness_level: opt.id })}
+                  data-testid={`strictness-${opt.id}`}
+                >
+                  <span className={`text-sm font-medium ${formData.strictness_level === opt.id ? "text-green-400" : "text-zinc-300"}`}>{opt.label}</span>
+                  <p className="text-xs text-zinc-500 mt-1">{opt.desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <Button onClick={handleSave} className="w-full bg-green-600 hover:bg-green-500" disabled={isLoading} data-testid="profile-save">
             {isLoading ? "Guardando..." : "Guardar Cambios"}
           </Button>
