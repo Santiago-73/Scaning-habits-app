@@ -14,10 +14,14 @@ class NutriScanAPITester:
         self.token = None
         self.user_data = None
 
-    def run_test(self, name, method, endpoint, expected_status, data=None):
+    def run_test(self, name, method, endpoint, expected_status, data=None, auth_required=False):
         """Run a single API test"""
         url = f"{self.api_url}/{endpoint}"
         headers = {'Content-Type': 'application/json'}
+        
+        # Add authorization header if token exists and auth is required
+        if auth_required and self.token:
+            headers['Authorization'] = f'Bearer {self.token}'
 
         self.tests_run += 1
         print(f"\n🔍 Testing {name}...")
@@ -28,6 +32,8 @@ class NutriScanAPITester:
                 response = requests.get(url, headers=headers, timeout=10)
             elif method == 'POST':
                 response = requests.post(url, json=data, headers=headers, timeout=15)
+            elif method == 'PUT':
+                response = requests.put(url, json=data, headers=headers, timeout=15)
 
             success = response.status_code == expected_status
             
