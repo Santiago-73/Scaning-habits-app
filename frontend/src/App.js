@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, createContext, useContext } from "react";
 import "@/App.css";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Toaster, toast } from "sonner";
@@ -9,8 +9,6 @@ import {
   Zap, 
   AlertTriangle, 
   CheckCircle, 
-  Menu, 
-  X, 
   Upload,
   ArrowLeft,
   Info,
@@ -38,8 +36,7 @@ import {
   DialogTitle,
   DialogDescription
 } from "@/components/ui/dialog";
-import { Progress } from "@/components/ui/progress";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -62,8 +59,10 @@ import {
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
-// Auth Context
-const useAuth = () => {
+// ==================== AUTH CONTEXT ====================
+const AuthContext = createContext(null);
+
+const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(localStorage.getItem('nutriscan_token'));
   const [loading, setLoading] = useState(true);
@@ -81,6 +80,7 @@ const useAuth = () => {
         } catch (error) {
           localStorage.removeItem('nutriscan_token');
           setToken(null);
+          setUser(null);
         }
       }
       setLoading(false);
@@ -108,10 +108,14 @@ const useAuth = () => {
 
   const logout = async () => {
     try {
-      await axios.post(`${API}/auth/logout`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-    } catch (e) {}
+      if (token) {
+        await axios.post(`${API}/auth/logout`, {}, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      }
+    } catch (e) {
+      console.error("Logout error:", e);
+    }
     localStorage.removeItem('nutriscan_token');
     setToken(null);
     setUser(null);
@@ -125,10 +129,24 @@ const useAuth = () => {
     return response.data;
   };
 
-  return { user, token, loading, login, register, logout, updateProfile };
+  const value = { user, token, loading, login, register, logout, updateProfile };
+
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
 };
 
-// Allergy/Condition options
+const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within AuthProvider");
+  }
+  return context;
+};
+
+// ==================== CONSTANTS ====================
 const ALLERGY_OPTIONS = [
   { id: "gluten", label: "Gluten" },
   { id: "lactose", label: "Lactosa" },
@@ -146,7 +164,7 @@ const CONDITION_OPTIONS = [
   { id: "cholesterol", label: "Colesterol alto" },
 ];
 
-// Auth Modal Component
+// ==================== AUTH MODAL ====================
 const AuthModal = ({ isOpen, onClose, onSuccess, initialMode = "login" }) => {
   const [mode, setMode] = useState(initialMode);
   const [step, setStep] = useState(1);
@@ -162,15 +180,30 @@ const AuthModal = ({ isOpen, onClose, onSuccess, initialMode = "login" }) => {
     conditions: []
   });
 
-  const auth = useAuth();
+  const { login, register } = useAuth();
+
+  const resetForm = () => {
+    setFormData({
+      name: "", email: "", password: "",
+      weight: "", height: "", sex: "",
+      allergies: [], conditions: []
+    });
+    setStep(1);
+    setMode(initialMode);
+  };
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
 
   const handleLogin = async () => {
     setIsLoading(true);
     try {
-      await auth.login(formData.email, formData.password);
+      await login(formData.email, formData.password);
       toast.success("¡Bienvenido de nuevo!");
       onSuccess?.();
-      onClose();
+      handleClose();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Error al iniciar sesión");
     } finally {
@@ -188,10 +221,10 @@ const AuthModal = ({ isOpen, onClose, onSuccess, initialMode = "login" }) => {
         allergies: formData.allergies,
         conditions: formData.conditions
       };
-      await auth.register(formData.name, formData.email, formData.password, profile);
+      await register(formData.name, formData.email, formData.password, profile);
       toast.success("¡Cuenta creada con éxito!");
       onSuccess?.();
-      onClose();
+      handleClose();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Error al registrarse");
     } finally {
@@ -218,7 +251,7 @@ const AuthModal = ({ isOpen, onClose, onSuccess, initialMode = "login" }) => {
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="bg-zinc-950 border-zinc-800 max-w-md mx-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-semibold text-zinc-50 flex items-center gap-2">
@@ -499,8 +532,15 @@ const AuthModal = ({ isOpen, onClose, onSuccess, initialMode = "login" }) => {
   );
 };
 
-// Navbar Component
-const Navbar = ({ user, onAuthClick, onLogout, onProfileClick }) => {
+// ==================== NAVBAR ====================
+const Navbar = ({ onAuthClick, onProfileClick }) => {
+  const { user, logout } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+    toast.success("Sesión cerrada");
+  };
+
   return (
     <nav 
       className="fixed top-0 w-full z-50 glass border-b border-white/5 h-16"
@@ -541,7 +581,7 @@ const Navbar = ({ user, onAuthClick, onLogout, onProfileClick }) => {
               </DropdownMenuItem>
               <DropdownMenuSeparator className="bg-zinc-800" />
               <DropdownMenuItem 
-                onClick={onLogout}
+                onClick={handleLogout}
                 className="text-red-400 focus:bg-zinc-800 cursor-pointer"
                 data-testid="logout-menu-item"
               >
@@ -566,7 +606,7 @@ const Navbar = ({ user, onAuthClick, onLogout, onProfileClick }) => {
   );
 };
 
-// Footer Component
+// ==================== FOOTER ====================
 const Footer = () => {
   return (
     <footer 
@@ -583,32 +623,19 @@ const Footer = () => {
           </div>
           
           <div className="flex flex-wrap justify-center gap-6 text-sm">
-            <a 
-              href="/privacy" 
-              className="text-zinc-500 hover:text-zinc-300 transition-colors duration-200"
-              data-testid="footer-privacy-link"
-            >
+            <a href="/privacy" className="text-zinc-500 hover:text-zinc-300 transition-colors duration-200" data-testid="footer-privacy-link">
               Política de Privacidad
             </a>
-            <a 
-              href="/terms" 
-              className="text-zinc-500 hover:text-zinc-300 transition-colors duration-200"
-              data-testid="footer-terms-link"
-            >
+            <a href="/terms" className="text-zinc-500 hover:text-zinc-300 transition-colors duration-200" data-testid="footer-terms-link">
               Términos de Uso
             </a>
-            <a 
-              href="/contact" 
-              className="text-zinc-500 hover:text-zinc-300 transition-colors duration-200"
-              data-testid="footer-contact-link"
-            >
+            <a href="/contact" className="text-zinc-500 hover:text-zinc-300 transition-colors duration-200" data-testid="footer-contact-link">
               Contacto
             </a>
           </div>
           
           <p className="text-xs text-zinc-600 text-center max-w-md">
-            © {new Date().getFullYear()} NutriScan AI. Todos los derechos reservados. 
-            La información nutricional es orientativa y no sustituye el consejo médico profesional.
+            © {new Date().getFullYear()} NutriScan AI. Todos los derechos reservados.
           </p>
         </div>
       </div>
@@ -616,7 +643,7 @@ const Footer = () => {
   );
 };
 
-// Scan Button Component
+// ==================== SCAN BUTTON ====================
 const ScanButton = ({ onClick }) => {
   return (
     <button
@@ -630,8 +657,8 @@ const ScanButton = ({ onClick }) => {
   );
 };
 
-// Camera Modal Component with native camera support
-const CameraModal = ({ isOpen, onClose, onCapture, isLoading, token }) => {
+// ==================== CAMERA MODAL ====================
+const CameraModal = ({ isOpen, onClose, onCapture, isLoading }) => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const fileInputRef = useRef(null);
@@ -640,7 +667,6 @@ const CameraModal = ({ isOpen, onClose, onCapture, isLoading, token }) => {
   const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Validate file type
       if (!file.type.startsWith('image/')) {
         toast.error("Por favor, selecciona una imagen válida");
         return;
@@ -670,14 +696,6 @@ const CameraModal = ({ isOpen, onClose, onCapture, isLoading, token }) => {
     onClose();
   };
 
-  const openCamera = () => {
-    cameraInputRef.current?.click();
-  };
-
-  const openGallery = () => {
-    fileInputRef.current?.click();
-  };
-
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="bg-zinc-950 border-zinc-800 max-w-md mx-auto p-0 overflow-hidden">
@@ -698,28 +716,18 @@ const CameraModal = ({ isOpen, onClose, onCapture, isLoading, token }) => {
             <div className="viewfinder-corner-bl" />
             
             {previewUrl ? (
-              <img 
-                src={previewUrl} 
-                alt="Preview" 
-                className="w-full h-full object-cover"
-                data-testid="image-preview"
-              />
+              <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" data-testid="image-preview" />
             ) : (
               <div className="text-center p-4">
                 <Camera className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
-                <p className="text-sm text-zinc-500">
-                  Captura o sube la etiqueta nutricional
-                </p>
+                <p className="text-sm text-zinc-500">Captura o sube la etiqueta nutricional</p>
               </div>
             )}
             
-            {/* Scan line animation */}
-            {isLoading && (
-              <div className="scan-line animate-scan-line" />
-            )}
+            {isLoading && <div className="scan-line animate-scan-line" />}
           </div>
 
-          {/* Hidden file inputs */}
+          {/* Hidden inputs */}
           <input 
             ref={cameraInputRef}
             type="file" 
@@ -744,7 +752,7 @@ const CameraModal = ({ isOpen, onClose, onCapture, isLoading, token }) => {
               <>
                 <div className="grid grid-cols-2 gap-3">
                   <Button 
-                    onClick={openCamera}
+                    onClick={() => cameraInputRef.current?.click()}
                     variant="outline" 
                     className="border-zinc-700 bg-zinc-900/50 hover:bg-zinc-800 text-zinc-300"
                     data-testid="open-camera-button"
@@ -753,7 +761,7 @@ const CameraModal = ({ isOpen, onClose, onCapture, isLoading, token }) => {
                     Cámara
                   </Button>
                   <Button 
-                    onClick={openGallery}
+                    onClick={() => fileInputRef.current?.click()}
                     variant="outline" 
                     className="border-zinc-700 bg-zinc-900/50 hover:bg-zinc-800 text-zinc-300"
                     data-testid="open-gallery-button"
@@ -766,7 +774,7 @@ const CameraModal = ({ isOpen, onClose, onCapture, isLoading, token }) => {
                 <Button 
                   onClick={handleCapture}
                   disabled={!selectedFile}
-                  className="w-full bg-green-600 hover:bg-green-500 text-white neon-glow disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full bg-green-600 hover:bg-green-500 text-white neon-glow disabled:opacity-50"
                   data-testid="analyze-button"
                 >
                   <ScanLine className="w-4 h-4 mr-2" />
@@ -778,12 +786,8 @@ const CameraModal = ({ isOpen, onClose, onCapture, isLoading, token }) => {
             {isLoading && (
               <div className="text-center py-4">
                 <div className="loading-spinner animate-spin-slow mx-auto mb-4" />
-                <p className="text-sm text-zinc-400 animate-pulse">
-                  Analizando con IA...
-                </p>
-                <p className="text-xs text-zinc-600 mt-2">
-                  Gemini 3 Flash está procesando la imagen
-                </p>
+                <p className="text-sm text-zinc-400 animate-pulse">Analizando con IA...</p>
+                <p className="text-xs text-zinc-600 mt-2">Gemini 3 Flash está procesando la imagen</p>
               </div>
             )}
           </div>
@@ -793,42 +797,7 @@ const CameraModal = ({ isOpen, onClose, onCapture, isLoading, token }) => {
   );
 };
 
-// Personalized Alert Component
-const PersonalizedAlertCard = ({ alert }) => {
-  const getAlertStyles = (type) => {
-    switch (type) {
-      case "danger":
-        return "bg-red-500/10 border-red-500/30 text-red-400";
-      case "warning":
-        return "bg-yellow-500/10 border-yellow-500/30 text-yellow-400";
-      default:
-        return "bg-blue-500/10 border-blue-500/30 text-blue-400";
-    }
-  };
-
-  const getIcon = (type) => {
-    switch (type) {
-      case "danger":
-        return <AlertCircle className="w-5 h-5" />;
-      case "warning":
-        return <AlertTriangle className="w-5 h-5" />;
-      default:
-        return <Info className="w-5 h-5" />;
-    }
-  };
-
-  return (
-    <div 
-      className={`p-4 rounded-xl border ${getAlertStyles(alert.type)} flex items-start gap-3`}
-      data-testid={`personalized-alert-${alert.type}`}
-    >
-      {getIcon(alert.type)}
-      <p className="text-sm font-medium">{alert.message}</p>
-    </div>
-  );
-};
-
-// Nutrient Card Component
+// ==================== NUTRIENT CARD ====================
 const NutrientCard = ({ nutrient, index }) => {
   const getStatusColor = (status) => {
     switch (status) {
@@ -849,13 +818,7 @@ const NutrientCard = ({ nutrient, index }) => {
   };
 
   const getIcon = (name) => {
-    const iconMap = {
-      'Calorías': Flame,
-      'Grasas': Droplets,
-      'Carbohidratos': Cookie,
-      'Fibra': Wheat,
-      'Proteínas': Dna,
-    };
+    const iconMap = { 'Calorías': Flame, 'Grasas': Droplets, 'Carbohidratos': Cookie, 'Fibra': Wheat, 'Proteínas': Dna };
     const key = Object.keys(iconMap).find(k => name.toLowerCase().includes(k.toLowerCase()));
     return key ? iconMap[key] : Sparkles;
   };
@@ -863,10 +826,7 @@ const NutrientCard = ({ nutrient, index }) => {
   const Icon = getIcon(nutrient.name);
 
   return (
-    <div 
-      className={`glass-light p-4 rounded-2xl opacity-0 animate-fade-in-up stagger-${Math.min(index + 1, 8)}`}
-      data-testid={`nutrient-card-${nutrient.name.toLowerCase().replace(/\s+/g, '-')}`}
-    >
+    <div className={`glass-light p-4 rounded-2xl opacity-0 animate-fade-in-up stagger-${Math.min(index + 1, 8)}`} data-testid={`nutrient-card-${nutrient.name.toLowerCase().replace(/\s+/g, '-')}`}>
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2">
           <div className={`w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center ${getStatusColor(nutrient.status)}`}>
@@ -874,107 +834,80 @@ const NutrientCard = ({ nutrient, index }) => {
           </div>
           <span className="text-sm text-zinc-400">{nutrient.name}</span>
         </div>
-        {nutrient.percentage && (
-          <span className="text-xs text-zinc-500">{nutrient.percentage}% VD</span>
-        )}
+        {nutrient.percentage && <span className="text-xs text-zinc-500">{nutrient.percentage}% VD</span>}
       </div>
-      
       <div className="flex items-end justify-between mb-2">
-        <span className={`text-2xl font-bold ${getStatusColor(nutrient.status)}`}>
-          {nutrient.value}
-        </span>
+        <span className={`text-2xl font-bold ${getStatusColor(nutrient.status)}`}>{nutrient.value}</span>
         <span className="text-sm text-zinc-500">{nutrient.unit}</span>
       </div>
-      
       {nutrient.percentage && (
         <div className="nutrient-bar">
-          <div 
-            className={`nutrient-bar-fill ${getBarColor(nutrient.status)}`}
-            style={{ width: `${Math.min(nutrient.percentage * 2, 100)}%` }}
-          />
+          <div className={`nutrient-bar-fill ${getBarColor(nutrient.status)}`} style={{ width: `${Math.min(nutrient.percentage * 2, 100)}%` }} />
         </div>
       )}
     </div>
   );
 };
 
-// Health Score Component
+// ==================== HEALTH SCORE ====================
 const HealthScore = ({ score }) => {
   const circumference = 2 * Math.PI * 45;
   const offset = circumference - (score / 100) * circumference;
-  
-  const getScoreColor = (score) => {
-    if (score >= 80) return '#22c55e';
-    if (score >= 60) return '#eab308';
-    return '#ef4444';
-  };
-
-  const getScoreLabel = (score) => {
-    if (score >= 80) return 'Excelente';
-    if (score >= 60) return 'Bueno';
-    if (score >= 40) return 'Regular';
-    return 'Mejorable';
-  };
+  const getScoreColor = (s) => s >= 80 ? '#22c55e' : s >= 60 ? '#eab308' : '#ef4444';
+  const getScoreLabel = (s) => s >= 80 ? 'Excelente' : s >= 60 ? 'Bueno' : s >= 40 ? 'Regular' : 'Mejorable';
 
   return (
     <div className="health-score-circle flex items-center justify-center" data-testid="health-score">
       <svg className="progress-ring w-full h-full" viewBox="0 0 100 100">
-        <circle
-          className="health-score-bg"
-          cx="50"
-          cy="50"
-          r="45"
-        />
-        <circle
-          className="health-score-fill"
-          cx="50"
-          cy="50"
-          r="45"
-          stroke={getScoreColor(score)}
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          transform="rotate(-90 50 50)"
-        />
+        <circle className="health-score-bg" cx="50" cy="50" r="45" />
+        <circle className="health-score-fill" cx="50" cy="50" r="45" stroke={getScoreColor(score)} strokeDasharray={circumference} strokeDashoffset={offset} transform="rotate(-90 50 50)" />
       </svg>
       <div className="absolute text-center">
-        <span className="text-3xl font-bold" style={{ color: getScoreColor(score) }}>
-          {score}
-        </span>
+        <span className="text-3xl font-bold" style={{ color: getScoreColor(score) }}>{score}</span>
         <p className="text-xs text-zinc-500 mt-1">{getScoreLabel(score)}</p>
       </div>
     </div>
   );
 };
 
-// Results View Component
-const ResultsView = ({ result, onBack, user }) => {
+// ==================== PERSONALIZED ALERT ====================
+const PersonalizedAlertCard = ({ alert }) => {
+  const getStyles = (type) => {
+    switch (type) {
+      case "danger": return "bg-red-500/10 border-red-500/30 text-red-400";
+      case "warning": return "bg-yellow-500/10 border-yellow-500/30 text-yellow-400";
+      default: return "bg-blue-500/10 border-blue-500/30 text-blue-400";
+    }
+  };
+  const getIcon = (type) => type === "danger" ? <AlertCircle className="w-5 h-5" /> : type === "warning" ? <AlertTriangle className="w-5 h-5" /> : <Info className="w-5 h-5" />;
+
+  return (
+    <div className={`p-4 rounded-xl border ${getStyles(alert.type)} flex items-start gap-3`} data-testid={`personalized-alert-${alert.type}`}>
+      {getIcon(alert.type)}
+      <p className="text-sm font-medium">{alert.message}</p>
+    </div>
+  );
+};
+
+// ==================== RESULTS VIEW ====================
+const ResultsView = ({ result, onBack }) => {
   if (!result) return null;
 
   return (
     <div className="min-h-screen bg-zinc-950 pt-20 pb-8 px-4" data-testid="results-view">
       <div className="max-w-2xl mx-auto">
-        {/* Header */}
         <div className="flex items-center gap-4 mb-8 opacity-0 animate-fade-in-up">
-          <button 
-            onClick={onBack}
-            className="p-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 transition-colors duration-200"
-            data-testid="back-button"
-            aria-label="Volver"
-          >
+          <button onClick={onBack} className="p-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 transition-colors duration-200" data-testid="back-button">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-zinc-50 font-['Manrope']">
-              Resultado del Análisis
-            </h1>
-            <p className="text-sm text-zinc-500">
-              Analizado con Gemini 3 Flash
-            </p>
+            <h1 className="text-2xl font-bold text-zinc-50 font-['Manrope']">Resultado del Análisis</h1>
+            <p className="text-sm text-zinc-500">Analizado con Gemini 3 Flash</p>
           </div>
         </div>
 
         {/* Personalized Alerts */}
-        {result.personalized_alerts && result.personalized_alerts.length > 0 && (
+        {result.personalized_alerts?.length > 0 && (
           <div className="mb-6 space-y-3 opacity-0 animate-fade-in-up">
             <h3 className="text-sm font-medium text-zinc-400 flex items-center gap-2 px-1">
               <Shield className="w-4 h-4 text-green-500" />
@@ -990,19 +923,13 @@ const ResultsView = ({ result, onBack, user }) => {
         <Card className="bg-zinc-900/50 border-zinc-800 mb-6 opacity-0 animate-fade-in-up stagger-1">
           <CardContent className="p-6">
             <div className="flex items-start gap-4">
-              <div className="w-20 h-20 rounded-xl bg-zinc-800 flex items-center justify-center overflow-hidden">
+              <div className="w-20 h-20 rounded-xl bg-zinc-800 flex items-center justify-center">
                 <Cookie className="w-10 h-10 text-zinc-600" />
               </div>
               <div className="flex-1">
-                <h2 className="text-lg font-semibold text-zinc-50" data-testid="product-name">
-                  {result.product_name}
-                </h2>
-                <p className="text-sm text-zinc-500" data-testid="product-brand">
-                  {result.brand}
-                </p>
-                <Badge variant="outline" className="mt-2 text-xs border-zinc-700 text-zinc-400">
-                  {result.serving_size}
-                </Badge>
+                <h2 className="text-lg font-semibold text-zinc-50" data-testid="product-name">{result.product_name}</h2>
+                <p className="text-sm text-zinc-500" data-testid="product-brand">{result.brand}</p>
+                <Badge variant="outline" className="mt-2 text-xs border-zinc-700 text-zinc-400">{result.serving_size}</Badge>
               </div>
             </div>
           </CardContent>
@@ -1014,11 +941,9 @@ const ResultsView = ({ result, onBack, user }) => {
           <HealthScore score={result.health_score} />
         </div>
 
-        {/* Nutrients Grid */}
+        {/* Nutrients */}
         <div className="mb-6">
-          <h3 className="text-sm font-medium text-zinc-400 mb-4 px-1">
-            Información Nutricional
-          </h3>
+          <h3 className="text-sm font-medium text-zinc-400 mb-4 px-1">Información Nutricional</h3>
           <div className="grid grid-cols-2 gap-3">
             {result.nutrients.map((nutrient, index) => (
               <NutrientCard key={nutrient.name} nutrient={nutrient} index={index} />
@@ -1027,19 +952,17 @@ const ResultsView = ({ result, onBack, user }) => {
         </div>
 
         {/* Ingredients */}
-        {result.ingredients && result.ingredients.length > 0 && (
+        {result.ingredients?.length > 0 && (
           <Card className="bg-zinc-900/50 border-zinc-800 mb-6 opacity-0 animate-fade-in-up stagger-5">
             <CardContent className="p-4">
               <h3 className="text-sm font-medium text-zinc-400 mb-3">Ingredientes</h3>
-              <p className="text-sm text-zinc-500 leading-relaxed">
-                {result.ingredients.join(", ")}
-              </p>
+              <p className="text-sm text-zinc-500 leading-relaxed">{result.ingredients.join(", ")}</p>
             </CardContent>
           </Card>
         )}
 
         {/* Warnings */}
-        {result.warnings && result.warnings.length > 0 && (
+        {result.warnings?.length > 0 && (
           <Card className="bg-yellow-500/5 border-yellow-500/20 mb-6 opacity-0 animate-fade-in-up stagger-6">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
@@ -1048,13 +971,8 @@ const ResultsView = ({ result, onBack, user }) => {
               </div>
               <ul className="space-y-2">
                 {result.warnings.map((warning, index) => (
-                  <li 
-                    key={index} 
-                    className="text-sm text-zinc-400 flex items-start gap-2"
-                    data-testid={`warning-${index}`}
-                  >
-                    <span className="text-yellow-500 mt-1">•</span>
-                    {warning}
+                  <li key={index} className="text-sm text-zinc-400 flex items-start gap-2" data-testid={`warning-${index}`}>
+                    <span className="text-yellow-500 mt-1">•</span>{warning}
                   </li>
                 ))}
               </ul>
@@ -1063,7 +981,7 @@ const ResultsView = ({ result, onBack, user }) => {
         )}
 
         {/* Recommendations */}
-        {result.recommendations && result.recommendations.length > 0 && (
+        {result.recommendations?.length > 0 && (
           <Card className="bg-green-500/5 border-green-500/20 opacity-0 animate-fade-in-up stagger-7">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
@@ -1072,13 +990,8 @@ const ResultsView = ({ result, onBack, user }) => {
               </div>
               <ul className="space-y-2">
                 {result.recommendations.map((rec, index) => (
-                  <li 
-                    key={index} 
-                    className="text-sm text-zinc-400 flex items-start gap-2"
-                    data-testid={`recommendation-${index}`}
-                  >
-                    <span className="text-green-500 mt-1">•</span>
-                    {rec}
+                  <li key={index} className="text-sm text-zinc-400 flex items-start gap-2" data-testid={`recommendation-${index}`}>
+                    <span className="text-green-500 mt-1">•</span>{rec}
                   </li>
                 ))}
               </ul>
@@ -1086,13 +999,8 @@ const ResultsView = ({ result, onBack, user }) => {
           </Card>
         )}
 
-        {/* New Scan Button */}
         <div className="mt-8 flex justify-center">
-          <Button 
-            onClick={onBack}
-            className="bg-green-600 hover:bg-green-500 text-white px-8 neon-glow"
-            data-testid="new-scan-button"
-          >
+          <Button onClick={onBack} className="bg-green-600 hover:bg-green-500 text-white px-8 neon-glow" data-testid="new-scan-button">
             <Camera className="w-4 h-4 mr-2" />
             Nuevo Escaneo
           </Button>
@@ -1102,15 +1010,11 @@ const ResultsView = ({ result, onBack, user }) => {
   );
 };
 
-// Profile Modal Component
-const ProfileModal = ({ isOpen, onClose, user, onUpdate }) => {
+// ==================== PROFILE MODAL ====================
+const ProfileModal = ({ isOpen, onClose }) => {
+  const { user, updateProfile } = useAuth();
   const [formData, setFormData] = useState({
-    name: user?.name || "",
-    weight: user?.profile?.weight || "",
-    height: user?.profile?.height || "",
-    sex: user?.profile?.sex || "",
-    allergies: user?.profile?.allergies || [],
-    conditions: user?.profile?.conditions || []
+    name: "", weight: "", height: "", sex: "", allergies: [], conditions: []
   });
   const [isLoading, setIsLoading] = useState(false);
 
@@ -1127,28 +1031,18 @@ const ProfileModal = ({ isOpen, onClose, user, onUpdate }) => {
     }
   }, [user]);
 
-  const toggleAllergy = (id) => {
-    setFormData(prev => ({
-      ...prev,
-      allergies: prev.allergies.includes(id)
-        ? prev.allergies.filter(a => a !== id)
-        : [...prev.allergies, id]
-    }));
-  };
+  const toggleAllergy = (id) => setFormData(prev => ({
+    ...prev, allergies: prev.allergies.includes(id) ? prev.allergies.filter(a => a !== id) : [...prev.allergies, id]
+  }));
 
-  const toggleCondition = (id) => {
-    setFormData(prev => ({
-      ...prev,
-      conditions: prev.conditions.includes(id)
-        ? prev.conditions.filter(c => c !== id)
-        : [...prev.conditions, id]
-    }));
-  };
+  const toggleCondition = (id) => setFormData(prev => ({
+    ...prev, conditions: prev.conditions.includes(id) ? prev.conditions.filter(c => c !== id) : [...prev.conditions, id]
+  }));
 
   const handleSave = async () => {
     setIsLoading(true);
     try {
-      await onUpdate({
+      await updateProfile({
         name: formData.name,
         profile: {
           weight: formData.weight ? parseFloat(formData.weight) : null,
@@ -1172,8 +1066,7 @@ const ProfileModal = ({ isOpen, onClose, user, onUpdate }) => {
       <DialogContent className="bg-zinc-950 border-zinc-800 max-w-md mx-auto max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-semibold text-zinc-50 flex items-center gap-2">
-            <Settings className="w-5 h-5 text-green-500" />
-            Mi Perfil
+            <Settings className="w-5 h-5 text-green-500" /> Mi Perfil
           </DialogTitle>
           <DialogDescription className="text-sm text-zinc-500">
             Actualiza tu información para recibir alertas personalizadas
@@ -1183,47 +1076,23 @@ const ProfileModal = ({ isOpen, onClose, user, onUpdate }) => {
         <div className="space-y-6 pt-4">
           <div className="space-y-2">
             <Label className="text-zinc-300">Nombre</Label>
-            <Input
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="bg-zinc-900 border-zinc-800 text-zinc-50"
-              data-testid="profile-name"
-            />
+            <Input value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="bg-zinc-900 border-zinc-800 text-zinc-50" data-testid="profile-name" />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label className="text-zinc-300 flex items-center gap-1">
-                <Scale className="w-4 h-4" /> Peso (kg)
-              </Label>
-              <Input
-                type="number"
-                value={formData.weight}
-                onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
-                className="bg-zinc-900 border-zinc-800 text-zinc-50"
-                data-testid="profile-weight"
-              />
+              <Label className="text-zinc-300 flex items-center gap-1"><Scale className="w-4 h-4" /> Peso (kg)</Label>
+              <Input type="number" value={formData.weight} onChange={(e) => setFormData({ ...formData, weight: e.target.value })} className="bg-zinc-900 border-zinc-800 text-zinc-50" data-testid="profile-weight" />
             </div>
             <div className="space-y-2">
-              <Label className="text-zinc-300 flex items-center gap-1">
-                <Ruler className="w-4 h-4" /> Altura (cm)
-              </Label>
-              <Input
-                type="number"
-                value={formData.height}
-                onChange={(e) => setFormData({ ...formData, height: e.target.value })}
-                className="bg-zinc-900 border-zinc-800 text-zinc-50"
-                data-testid="profile-height"
-              />
+              <Label className="text-zinc-300 flex items-center gap-1"><Ruler className="w-4 h-4" /> Altura (cm)</Label>
+              <Input type="number" value={formData.height} onChange={(e) => setFormData({ ...formData, height: e.target.value })} className="bg-zinc-900 border-zinc-800 text-zinc-50" data-testid="profile-height" />
             </div>
           </div>
 
           <div className="space-y-2">
             <Label className="text-zinc-300">Sexo</Label>
-            <Select 
-              value={formData.sex} 
-              onValueChange={(value) => setFormData({ ...formData, sex: value })}
-            >
+            <Select value={formData.sex} onValueChange={(value) => setFormData({ ...formData, sex: value })}>
               <SelectTrigger className="bg-zinc-900 border-zinc-800 text-zinc-50" data-testid="profile-sex">
                 <SelectValue placeholder="Selecciona" />
               </SelectTrigger>
@@ -1241,19 +1110,8 @@ const ProfileModal = ({ isOpen, onClose, user, onUpdate }) => {
             </Label>
             <div className="grid grid-cols-2 gap-2">
               {ALLERGY_OPTIONS.map((allergy) => (
-                <div 
-                  key={allergy.id}
-                  className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors duration-200 ${
-                    formData.allergies.includes(allergy.id)
-                      ? "bg-yellow-500/10 border-yellow-500/50"
-                      : "bg-zinc-900 border-zinc-800 hover:border-zinc-700"
-                  }`}
-                  onClick={() => toggleAllergy(allergy.id)}
-                >
-                  <Checkbox 
-                    checked={formData.allergies.includes(allergy.id)}
-                    className="border-zinc-600"
-                  />
+                <div key={allergy.id} className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors duration-200 ${formData.allergies.includes(allergy.id) ? "bg-yellow-500/10 border-yellow-500/50" : "bg-zinc-900 border-zinc-800 hover:border-zinc-700"}`} onClick={() => toggleAllergy(allergy.id)}>
+                  <Checkbox checked={formData.allergies.includes(allergy.id)} className="border-zinc-600" />
                   <span className="text-sm text-zinc-300">{allergy.label}</span>
                 </div>
               ))}
@@ -1266,31 +1124,15 @@ const ProfileModal = ({ isOpen, onClose, user, onUpdate }) => {
             </Label>
             <div className="grid grid-cols-2 gap-2">
               {CONDITION_OPTIONS.map((condition) => (
-                <div 
-                  key={condition.id}
-                  className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors duration-200 ${
-                    formData.conditions.includes(condition.id)
-                      ? "bg-red-500/10 border-red-500/50"
-                      : "bg-zinc-900 border-zinc-800 hover:border-zinc-700"
-                  }`}
-                  onClick={() => toggleCondition(condition.id)}
-                >
-                  <Checkbox 
-                    checked={formData.conditions.includes(condition.id)}
-                    className="border-zinc-600"
-                  />
+                <div key={condition.id} className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors duration-200 ${formData.conditions.includes(condition.id) ? "bg-red-500/10 border-red-500/50" : "bg-zinc-900 border-zinc-800 hover:border-zinc-700"}`} onClick={() => toggleCondition(condition.id)}>
+                  <Checkbox checked={formData.conditions.includes(condition.id)} className="border-zinc-600" />
                   <span className="text-sm text-zinc-300">{condition.label}</span>
                 </div>
               ))}
             </div>
           </div>
 
-          <Button 
-            onClick={handleSave}
-            className="w-full bg-green-600 hover:bg-green-500"
-            disabled={isLoading}
-            data-testid="profile-save"
-          >
+          <Button onClick={handleSave} className="w-full bg-green-600 hover:bg-green-500" disabled={isLoading} data-testid="profile-save">
             {isLoading ? "Guardando..." : "Guardar Cambios"}
           </Button>
         </div>
@@ -1299,60 +1141,34 @@ const ProfileModal = ({ isOpen, onClose, user, onUpdate }) => {
   );
 };
 
-// Home Page Component
+// ==================== HOME PAGE ====================
 const Home = () => {
-  const auth = useAuth();
+  const { user, token, loading } = useAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [analysisResult, setAnalysisResult] = useState(null);
 
-  const handleScan = useCallback(() => {
-    setIsCameraOpen(true);
-  }, []);
-
   const handleCapture = async (imageBase64) => {
     setIsLoading(true);
-    
     try {
-      const headers = {
-        'Content-Type': 'application/json'
-      };
-      if (auth.token) {
-        headers['Authorization'] = `Bearer ${auth.token}`;
-      }
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const response = await axios.post(`${API}/analyze`, {
-        image_base64: imageBase64
-      }, { headers });
-      
+      const response = await axios.post(`${API}/analyze`, { image_base64: imageBase64 }, { headers });
       setAnalysisResult(response.data);
       setIsCameraOpen(false);
-      toast.success('¡Análisis completado!', {
-        description: 'La etiqueta ha sido analizada con Gemini 3 Flash'
-      });
+      toast.success('¡Análisis completado!', { description: 'La etiqueta ha sido analizada con Gemini 3 Flash' });
     } catch (error) {
       console.error('Error analyzing label:', error);
-      const errorMessage = error.response?.data?.detail || 'No se pudo completar el análisis';
-      toast.error('Error al analizar', {
-        description: errorMessage
-      });
+      toast.error('Error al analizar', { description: error.response?.data?.detail || 'No se pudo completar el análisis' });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleBack = useCallback(() => {
-    setAnalysisResult(null);
-  }, []);
-
-  const handleLogout = async () => {
-    await auth.logout();
-    toast.success("Sesión cerrada");
-  };
-
-  if (auth.loading) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
         <div className="loading-spinner animate-spin-slow" />
@@ -1360,24 +1176,13 @@ const Home = () => {
     );
   }
 
-  // If we have results, show results view
   if (analysisResult) {
     return (
       <>
-        <Navbar 
-          user={auth.user} 
-          onAuthClick={() => setShowAuthModal(true)}
-          onLogout={handleLogout}
-          onProfileClick={() => setShowProfileModal(true)}
-        />
-        <ResultsView result={analysisResult} onBack={handleBack} user={auth.user} />
+        <Navbar onAuthClick={() => setShowAuthModal(true)} onProfileClick={() => setShowProfileModal(true)} />
+        <ResultsView result={analysisResult} onBack={() => setAnalysisResult(null)} />
         <Footer />
-        <ProfileModal 
-          isOpen={showProfileModal}
-          onClose={() => setShowProfileModal(false)}
-          user={auth.user}
-          onUpdate={auth.updateProfile}
-        />
+        <ProfileModal isOpen={showProfileModal} onClose={() => setShowProfileModal(false)} />
         <Toaster position="top-center" richColors />
       </>
     );
@@ -1385,27 +1190,19 @@ const Home = () => {
 
   return (
     <>
-      <Navbar 
-        user={auth.user} 
-        onAuthClick={() => setShowAuthModal(true)}
-        onLogout={handleLogout}
-        onProfileClick={() => setShowProfileModal(true)}
-      />
+      <Navbar onAuthClick={() => setShowAuthModal(true)} onProfileClick={() => setShowProfileModal(true)} />
       
-      {/* Hero Section */}
       <main className="hero-bg min-h-screen flex flex-col" data-testid="home-page">
         <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 pt-24 pb-16">
-          {/* User Welcome */}
-          {auth.user && (
+          {user && (
             <div className="mb-6 opacity-0 animate-fade-in">
               <Badge className="bg-green-600/20 text-green-400 border-green-600/30">
                 <User className="w-3 h-3 mr-1" />
-                Hola, {auth.user.name}
+                Hola, {user.name}
               </Badge>
             </div>
           )}
 
-          {/* Main Content */}
           <div className="text-center max-w-lg mx-auto mb-12 opacity-0 animate-fade-in-up">
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-6 font-['Manrope']">
               <span className="gradient-text">Escanea</span>
@@ -1417,17 +1214,14 @@ const Home = () => {
             </p>
           </div>
 
-          {/* Scan Button */}
           <div className="mb-8 opacity-0 animate-fade-in-up stagger-2">
-            <ScanButton onClick={handleScan} />
+            <ScanButton onClick={() => setIsCameraOpen(true)} />
           </div>
 
-          {/* CTA Text */}
           <p className="text-sm text-zinc-500 animate-bounce-subtle opacity-0 animate-fade-in stagger-3">
             Toca para escanear una etiqueta
           </p>
 
-          {/* Features */}
           <div className="grid grid-cols-3 gap-4 mt-16 max-w-md w-full opacity-0 animate-fade-in-up stagger-4">
             <div className="text-center">
               <div className="w-12 h-12 rounded-xl bg-zinc-900/80 border border-zinc-800 flex items-center justify-center mx-auto mb-2">
@@ -1449,8 +1243,7 @@ const Home = () => {
             </div>
           </div>
 
-          {/* Login prompt for non-authenticated users */}
-          {!auth.user && (
+          {!user && (
             <div className="mt-12 opacity-0 animate-fade-in-up stagger-5">
               <Card className="bg-zinc-900/30 border-zinc-800 max-w-sm">
                 <CardContent className="p-4 text-center">
@@ -1458,12 +1251,7 @@ const Home = () => {
                   <p className="text-sm text-zinc-400 mb-3">
                     Crea una cuenta para recibir alertas basadas en tus alergias y condiciones de salud
                   </p>
-                  <Button 
-                    onClick={() => setShowAuthModal(true)}
-                    variant="outline"
-                    className="border-green-600 text-green-500 hover:bg-green-600/10"
-                    data-testid="cta-register"
-                  >
+                  <Button onClick={() => setShowAuthModal(true)} variant="outline" className="border-green-600 text-green-500 hover:bg-green-600/10" data-testid="cta-register">
                     Crear Cuenta Gratis
                   </Button>
                 </CardContent>
@@ -1474,60 +1262,29 @@ const Home = () => {
       </main>
 
       <Footer />
-
-      {/* Camera Modal */}
-      <CameraModal 
-        isOpen={isCameraOpen} 
-        onClose={() => setIsCameraOpen(false)}
-        onCapture={handleCapture}
-        isLoading={isLoading}
-        token={auth.token}
-      />
-
-      {/* Auth Modal */}
-      <AuthModal 
-        isOpen={showAuthModal}
-        onClose={() => setShowAuthModal(false)}
-        onSuccess={() => {}}
-        initialMode="login"
-      />
-
-      {/* Profile Modal */}
-      <ProfileModal 
-        isOpen={showProfileModal}
-        onClose={() => setShowProfileModal(false)}
-        user={auth.user}
-        onUpdate={auth.updateProfile}
-      />
-
-      {/* Toast notifications */}
-      <Toaster 
-        position="top-center" 
-        richColors 
-        toastOptions={{
-          style: {
-            background: '#18181b',
-            border: '1px solid #27272a',
-            color: '#fafafa'
-          }
-        }}
-      />
+      <CameraModal isOpen={isCameraOpen} onClose={() => setIsCameraOpen(false)} onCapture={handleCapture} isLoading={isLoading} />
+      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onSuccess={() => {}} initialMode="login" />
+      <ProfileModal isOpen={showProfileModal} onClose={() => setShowProfileModal(false)} />
+      <Toaster position="top-center" richColors toastOptions={{ style: { background: '#18181b', border: '1px solid #27272a', color: '#fafafa' } }} />
     </>
   );
 };
 
+// ==================== APP ====================
 function App() {
   return (
-    <div className="min-h-screen bg-zinc-950">
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/privacy" element={<Home />} />
-          <Route path="/terms" element={<Home />} />
-          <Route path="/contact" element={<Home />} />
-        </Routes>
-      </BrowserRouter>
-    </div>
+    <AuthProvider>
+      <div className="min-h-screen bg-zinc-950">
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/privacy" element={<Home />} />
+            <Route path="/terms" element={<Home />} />
+            <Route path="/contact" element={<Home />} />
+          </Routes>
+        </BrowserRouter>
+      </div>
+    </AuthProvider>
   );
 }
 
