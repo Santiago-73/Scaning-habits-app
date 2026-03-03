@@ -251,7 +251,10 @@ const AuthModal = ({ isOpen, onClose, onSuccess, initialMode = "login" }) => {
         height: formData.height ? parseFloat(formData.height) : null,
         sex: formData.sex || null,
         allergies: formData.allergies,
-        conditions: formData.conditions
+        conditions: formData.conditions,
+        activity_level: formData.activity_level || null,
+        goal: formData.goal || null,
+        strictness_level: formData.strictness_level || "normal"
       };
       await register(formData.name, formData.email, formData.password, profile);
       toast.success("¡Cuenta creada con éxito!");
