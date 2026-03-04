@@ -1284,9 +1284,9 @@ const GeneralChat = ({ userProfile, onClose }) => {
               <div ref={messagesEndRef} />
             </>
           )}
-        </ScrollArea>
+        </div>
 
-        <div className="p-4 border-t border-zinc-800 bg-zinc-900/50">
+        <div className="p-4 border-t border-zinc-800 bg-zinc-900/50 flex-shrink-0">
           <div className="flex gap-2">
             <Input
               ref={inputRef}
