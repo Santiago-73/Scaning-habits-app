@@ -3,6 +3,7 @@ import "@/App.css";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Toaster, toast } from "sonner";
 import axios from "axios";
+import { supabase } from "@/lib/supabase";
 import { 
   Camera, 
   ScanLine, 
@@ -65,7 +66,7 @@ import {
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
-// ==================== AUTH CONTEXT ====================
+// ==================== AUTH CONTEXT (SUPABASE) ====================
 const AuthContext = createContext(null);
 
 const AuthProvider = ({ children }) => {
