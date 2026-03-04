@@ -1750,10 +1750,21 @@ const Home = () => {
         </div>
       </main>
 
+      {/* Floating Chat Button */}
+      <button
+        onClick={() => setShowGeneralChat(true)}
+        className="fixed bottom-6 right-6 w-14 h-14 bg-green-600 rounded-full flex items-center justify-center shadow-lg hover:bg-green-500 transition-all duration-200 hover:scale-110 neon-glow z-40"
+        data-testid="open-general-chat"
+        aria-label="Abrir chat de nutrición"
+      >
+        <MessageCircle className="w-6 h-6 text-white" />
+      </button>
+
       <Footer />
       <CameraModal isOpen={isCameraOpen} onClose={() => setIsCameraOpen(false)} onCapture={handleCapture} isLoading={isLoading} />
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onSuccess={() => {}} initialMode="login" />
       <ProfileModal isOpen={showProfileModal} onClose={() => setShowProfileModal(false)} />
+      {showGeneralChat && <GeneralChat userProfile={user?.profile || profile} onClose={() => setShowGeneralChat(false)} />}
       <Toaster position="top-center" richColors toastOptions={{ style: { background: '#18181b', border: '1px solid #27272a', color: '#fafafa' } }} />
     </>
   );
