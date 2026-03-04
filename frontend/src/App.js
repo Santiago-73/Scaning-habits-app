@@ -295,7 +295,8 @@ const AuthModal = ({ isOpen, onClose, onSuccess, initialMode = "login" }) => {
       onSuccess?.();
       handleClose();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error al iniciar sesión");
+      const message = error.message || "Error al iniciar sesión";
+      toast.error(message === "Invalid login credentials" ? "Credenciales incorrectas" : message);
     } finally {
       setIsLoading(false);
     }
@@ -315,11 +316,12 @@ const AuthModal = ({ isOpen, onClose, onSuccess, initialMode = "login" }) => {
         strictness_level: formData.strictness_level || "normal"
       };
       await register(formData.name, formData.email, formData.password, profile);
-      toast.success("¡Cuenta creada con éxito!");
+      toast.success("¡Cuenta creada con éxito! Revisa tu email para confirmar.");
       onSuccess?.();
       handleClose();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error al registrarse");
+      const message = error.message || "Error al registrarse";
+      toast.error(message === "User already registered" ? "Este email ya está registrado" : message);
     } finally {
       setIsLoading(false);
     }
