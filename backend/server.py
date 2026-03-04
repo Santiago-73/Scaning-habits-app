@@ -5,66 +5,43 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
-from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict, EmailStr
-from typing import List, Optional
+import json
 import uuid
+from pathlib import Path
+from pydantic import BaseModel, Field, ConfigDict
+from typing import List, Optional
 from datetime import datetime, timezone
-import hashlib
-import secrets
-import base64
+import google.generativeai as genai
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# MongoDB connection
+# MongoDB
 mongo_url = os.environ.get('MONGO_URL')
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ.get('DB_NAME', 'nutriscan_db')]
 
-# Gemini integration
-from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+# Gemini
+genai.configure(api_key=os.environ.get('GEMINI_API_KEY'))
 
-EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY')
-
-# Create the main app
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer(auto_error=False)
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # ==================== MODELS ====================
 
 class UserProfile(BaseModel):
-    weight: Optional[float] = None  # kg
-    height: Optional[float] = None  # cm
-    sex: Optional[str] = None  # male, female, other
-    allergies: List[str] = []  # gluten, lactose, nuts, eggs, shellfish, soy, etc.
-    conditions: List[str] = []  # celiac, diabetic, hypertensive, etc.
-    activity_level: Optional[str] = None  # sedentary, light, moderate, active, very_active
-    goal: Optional[str] = None  # lose_weight, maintain, gain_muscle, health
-    strictness_level: Optional[str] = "normal"  # relaxed, normal, strict, very_strict
-
-class UserCreate(BaseModel):
-    email: str
-    password: str
-    name: str
-    profile: Optional[UserProfile] = None
-
-class UserLogin(BaseModel):
-    email: str
-    password: str
-
-class UserResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str
-    email: str
-    name: str
-    profile: UserProfile
-    created_at: str
-
-class UserUpdate(BaseModel):
-    name: Optional[str] = None
-    profile: Optional[UserProfile] = None
+    weight: Optional[float] = None
+    height: Optional[float] = None
+    sex: Optional[str] = None
+    allergies: List[str] = []
+    conditions: List[str] = []
+    activity_level: Optional[str] = None
+    goal: Optional[str] = None
+    strictness_level: Optional[str] = "normal"
 
 class NutrientInfo(BaseModel):
     name: str
@@ -74,9 +51,9 @@ class NutrientInfo(BaseModel):
     status: str = "normal"
 
 class PersonalizedAlert(BaseModel):
-    type: str  # warning, danger, info
+    type: str
     message: str
-    related_to: str  # allergy, condition, nutrient
+    related_to: str
 
 class AnalysisResult(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -95,225 +72,200 @@ class AnalysisResult(BaseModel):
 class AnalyzeRequest(BaseModel):
     image_base64: str
 
-class ChatMessage(BaseModel):
-    role: str  # user, assistant
-    content: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
 class ChatRequest(BaseModel):
     analysis_id: str
     message: str
-    image_base64: Optional[str] = None  # Original image for context
+    image_base64: Optional[str] = None
 
 class ChatResponse(BaseModel):
     response: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-class TokenResponse(BaseModel):
-    token: str
-    user: UserResponse
+class GeneralChatRequest(BaseModel):
+    message: str
+    user_profile: Optional[dict] = None
+
+# ==================== AUTH (SUPABASE JWT) ====================
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+) -> Optional[dict]:
+    """
+    El frontend ya usa Supabase para auth.
+    Aquí simplemente leemos el user_id del token JWT de Supabase
+    sin verificar firma (confiamos en que Supabase lo emitió).
+    Para producción puedes añadir verificación con python-jose.
+    """
+    if not credentials:
+        return None
+    try:
+        import base64
+        token = credentials.credentials
+        # Decode payload (middle part of JWT)
+        payload_b64 = token.split('.')[1]
+        # Add padding if needed
+        payload_b64 += '=' * (4 - len(payload_b64) % 4)
+        payload = json.loads(base64.b64decode(payload_b64).decode('utf-8'))
+        return {
+            "id": payload.get("sub"),
+            "email": payload.get("email"),
+        }
+    except Exception:
+        return None
 
 # ==================== HELPERS ====================
 
-def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
-
-def generate_token() -> str:
-    return secrets.token_urlsafe(32)
-
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Optional[dict]:
-    if not credentials:
-        return None
-    token = credentials.credentials
-    session = await db.sessions.find_one({"token": token}, {"_id": 0})
-    if not session:
-        return None
-    user = await db.users.find_one({"id": session["user_id"]}, {"_id": 0})
-    return user
-
-async def require_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
-    user = await get_current_user(credentials)
-    if not user:
-        raise HTTPException(status_code=401, detail="No autenticado")
-    return user
-
-def generate_personalized_alerts(user_profile: UserProfile, ingredients: List[str], nutrients: List[NutrientInfo]) -> List[PersonalizedAlert]:
-    """Generate alerts based on user's health profile"""
+def generate_personalized_alerts(
+    user_profile: UserProfile,
+    ingredients: List[str],
+    nutrients: List[NutrientInfo]
+) -> List[PersonalizedAlert]:
     alerts = []
-    ingredients_lower = [i.lower() for i in ingredients]
-    ingredients_text = " ".join(ingredients_lower)
-    
-    # Allergy checks
+    ingredients_text = " ".join(i.lower() for i in ingredients)
+
     allergy_keywords = {
-        "gluten": ["gluten", "trigo", "wheat", "cebada", "centeno", "avena", "espelta"],
-        "lactose": ["leche", "lactosa", "milk", "lactose", "suero", "whey", "caseína", "casein"],
-        "nuts": ["nuez", "nueces", "almendra", "avellana", "pistacho", "anacardo", "cacahuete", "maní", "nut", "almond", "hazelnut"],
-        "eggs": ["huevo", "egg", "albúmina", "albumin", "lecitina de huevo"],
-        "shellfish": ["marisco", "camarón", "langosta", "cangrejo", "shellfish", "shrimp"],
+        "gluten": ["gluten", "trigo", "wheat", "cebada", "centeno", "avena"],
+        "lactose": ["leche", "lactosa", "milk", "suero", "whey", "caseína"],
+        "nuts": ["nuez", "almendra", "avellana", "pistacho", "anacardo", "cacahuete"],
+        "eggs": ["huevo", "egg", "albúmina"],
+        "shellfish": ["marisco", "camarón", "langosta", "cangrejo"],
         "soy": ["soja", "soy", "lecitina de soja"],
         "fish": ["pescado", "fish", "anchoa", "atún"],
     }
-    
+
     for allergy in user_profile.allergies:
-        allergy_lower = allergy.lower()
-        keywords = allergy_keywords.get(allergy_lower, [allergy_lower])
-        for keyword in keywords:
-            if keyword in ingredients_text:
+        keywords = allergy_keywords.get(allergy.lower(), [allergy.lower()])
+        for kw in keywords:
+            if kw in ingredients_text:
                 alerts.append(PersonalizedAlert(
                     type="danger",
                     message=f"⚠️ ALERTA: Este producto puede contener {allergy.upper()}",
                     related_to=f"allergy:{allergy}"
                 ))
                 break
-    
-    # Condition-based alerts
+
     for nutrient in nutrients:
-        nutrient_name = nutrient.name.lower()
-        
-        # Diabetic checks
-        if "diabetic" in [c.lower() for c in user_profile.conditions] or "diabetes" in [c.lower() for c in user_profile.conditions]:
-            if "azúcar" in nutrient_name or "sugar" in nutrient_name:
-                try:
-                    value = float(nutrient.value.replace(",", "."))
-                    if value > 5:
-                        alerts.append(PersonalizedAlert(
-                            type="warning",
-                            message=f"Alto contenido de azúcar ({nutrient.value}{nutrient.unit}). Precaución para diabéticos.",
-                            related_to="condition:diabetes"
-                        ))
-                except:
-                    pass
-        
-        # Hypertensive checks
-        if "hypertensive" in [c.lower() for c in user_profile.conditions] or "hipertensión" in [c.lower() for c in user_profile.conditions]:
-            if "sodio" in nutrient_name or "sodium" in nutrient_name or "sal" in nutrient_name:
-                try:
-                    value = float(nutrient.value.replace(",", "."))
-                    if value > 400:
-                        alerts.append(PersonalizedAlert(
-                            type="warning",
-                            message=f"Alto contenido de sodio ({nutrient.value}{nutrient.unit}). Precaución para hipertensos.",
-                            related_to="condition:hypertension"
-                        ))
-                except:
-                    pass
-    
-    # Celiac check
-    if "celiac" in [c.lower() for c in user_profile.conditions] or "celiaco" in [c.lower() for c in user_profile.conditions]:
-        gluten_keywords = ["gluten", "trigo", "wheat", "cebada", "centeno", "espelta"]
-        for keyword in gluten_keywords:
-            if keyword in ingredients_text:
+        name = nutrient.name.lower()
+        try:
+            value = float(nutrient.value.replace(",", "."))
+        except ValueError:
+            continue
+
+        if "diabetic" in [c.lower() for c in user_profile.conditions]:
+            if "azúcar" in name or "sugar" in name:
+                if value > 5:
+                    alerts.append(PersonalizedAlert(
+                        type="warning",
+                        message=f"Alto contenido de azúcar ({nutrient.value}{nutrient.unit}). Precaución para diabéticos.",
+                        related_to="condition:diabetes"
+                    ))
+
+        if "hypertensive" in [c.lower() for c in user_profile.conditions]:
+            if "sodio" in name or "sodium" in name:
+                if value > 400:
+                    alerts.append(PersonalizedAlert(
+                        type="warning",
+                        message=f"Alto contenido de sodio ({nutrient.value}{nutrient.unit}). Precaución para hipertensos.",
+                        related_to="condition:hypertension"
+                    ))
+
+    if "celiac" in [c.lower() for c in user_profile.conditions]:
+        for kw in ["gluten", "trigo", "wheat", "cebada", "centeno"]:
+            if kw in ingredients_text:
                 alerts.append(PersonalizedAlert(
                     type="danger",
-                    message="⚠️ ALERTA CELIACO: Este producto contiene o puede contener GLUTEN",
+                    message="⚠️ ALERTA CELIACO: Este producto contiene GLUTEN",
                     related_to="condition:celiac"
                 ))
                 break
-    
+
     return alerts
 
-async def analyze_with_gemini(image_base64: str, user_profile: Optional[UserProfile] = None) -> AnalysisResult:
-    """Analyze food label image using Gemini 3 Flash"""
-    
-    # Build context about user if available
+
+def get_personality_prompt(strictness: str) -> str:
+    personalities = {
+        "relaxed": "Eres un nutricionista amigable y comprensivo. Da consejos suaves y positivos.",
+        "normal": "Eres un nutricionista profesional y equilibrado. Da información objetiva.",
+        "strict": "Eres un nutricionista estricto y directo. Sé honesto sobre los aspectos negativos.",
+        "very_strict": "Eres un nutricionista sin filtros. Sé brutalmente honesto. Si algo es malo para la salud, dilo claramente.",
+    }
+    return personalities.get(strictness, personalities["normal"])
+
+
+async def analyze_with_gemini(
+    image_base64: str,
+    user_profile: Optional[UserProfile] = None
+) -> AnalysisResult:
+    import base64
+
     user_context = ""
     if user_profile:
         if user_profile.allergies:
             user_context += f"\nAlergias del usuario: {', '.join(user_profile.allergies)}"
         if user_profile.conditions:
-            user_context += f"\nCondiciones de salud: {', '.join(user_profile.conditions)}"
-    
-    system_prompt = f"""Eres un experto nutricionista que analiza etiquetas de productos alimenticios.
-Analiza la imagen de la etiqueta nutricional y extrae TODA la información disponible.
+            user_context += f"\nCondiciones: {', '.join(user_profile.conditions)}"
 
-RESPONDE SIEMPRE EN ESPAÑOL y en formato JSON válido con esta estructura exacta:
+    prompt = f"""Eres un experto nutricionista. Analiza esta etiqueta nutricional.
+
+RESPONDE SOLO EN JSON con esta estructura exacta (sin markdown, sin texto extra):
 {{
     "product_name": "nombre del producto",
-    "brand": "marca (si visible, sino 'Desconocida')",
+    "brand": "marca o Desconocida",
     "serving_size": "tamaño de porción",
-    "health_score": número del 0 al 100 basado en la calidad nutricional,
+    "health_score": número 0-100,
     "nutrients": [
-        {{"name": "Calorías", "value": "valor", "unit": "kcal", "percentage": porcentaje_VD_o_null, "status": "good/warning/danger/normal"}},
-        {{"name": "Grasas Totales", "value": "valor", "unit": "g", "percentage": porcentaje_VD_o_null, "status": "status"}},
-        {{"name": "Grasas Saturadas", "value": "valor", "unit": "g", "percentage": porcentaje_VD_o_null, "status": "status"}},
-        {{"name": "Carbohidratos", "value": "valor", "unit": "g", "percentage": porcentaje_VD_o_null, "status": "status"}},
-        {{"name": "Azúcares", "value": "valor", "unit": "g", "percentage": porcentaje_VD_o_null, "status": "status"}},
-        {{"name": "Fibra", "value": "valor", "unit": "g", "percentage": porcentaje_VD_o_null, "status": "status"}},
-        {{"name": "Proteínas", "value": "valor", "unit": "g", "percentage": porcentaje_VD_o_null, "status": "status"}},
-        {{"name": "Sodio", "value": "valor", "unit": "mg", "percentage": porcentaje_VD_o_null, "status": "status"}}
+        {{"name": "Calorías", "value": "valor", "unit": "kcal", "percentage": null, "status": "normal"}},
+        {{"name": "Grasas Totales", "value": "valor", "unit": "g", "percentage": null, "status": "normal"}},
+        {{"name": "Grasas Saturadas", "value": "valor", "unit": "g", "percentage": null, "status": "normal"}},
+        {{"name": "Carbohidratos", "value": "valor", "unit": "g", "percentage": null, "status": "normal"}},
+        {{"name": "Azúcares", "value": "valor", "unit": "g", "percentage": null, "status": "warning"}},
+        {{"name": "Fibra", "value": "valor", "unit": "g", "percentage": null, "status": "good"}},
+        {{"name": "Proteínas", "value": "valor", "unit": "g", "percentage": null, "status": "good"}},
+        {{"name": "Sodio", "value": "valor", "unit": "mg", "percentage": null, "status": "normal"}}
     ],
-    "ingredients": ["ingrediente1", "ingrediente2", ...],
-    "warnings": ["advertencia1", "advertencia2", ...],
-    "recommendations": ["recomendación1", "recomendación2", ...]
+    "ingredients": ["ingrediente1", "ingrediente2"],
+    "warnings": ["advertencia1"],
+    "recommendations": ["recomendación1"]
 }}
 
-Criterios para status:
-- "good": valor bajo/saludable (fibra alta, proteína alta, sodio bajo)
-- "warning": valor moderado-alto (azúcar moderado, grasas saturadas moderadas)  
-- "danger": valor muy alto/preocupante (azúcar muy alto, sodio muy alto)
-- "normal": valor dentro de rangos normales
-
-Criterios para health_score:
-- 80-100: Producto muy saludable
-- 60-79: Producto moderadamente saludable
-- 40-59: Producto con aspectos a mejorar
-- 0-39: Producto poco recomendable
-
-{user_context}
-
-Si no puedes leer la etiqueta claramente, haz tu mejor estimación basándote en lo visible.
-IMPORTANTE: Responde SOLO con el JSON, sin texto adicional."""
+Status: good=saludable, warning=moderado, danger=preocupante, normal=ok
+Health score: 80-100 muy saludable, 60-79 moderado, 40-59 mejorable, 0-39 poco recomendable
+{user_context}"""
 
     try:
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=f"nutriscan-{uuid.uuid4()}",
-            system_message=system_prompt
-        ).with_model("gemini", "gemini-3-flash-preview")
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        image_data = base64.b64decode(image_base64)
+        image_part = {"mime_type": "image/jpeg", "data": image_data}
+        response = model.generate_content([prompt, image_part])
         
-        # Create image content
-        image_content = ImageContent(image_base64=image_base64)
-        
-        user_message = UserMessage(
-            text="Analiza esta etiqueta nutricional y extrae toda la información. Responde en JSON.",
-            file_contents=[image_content]
-        )
-        
-        response = await chat.send_message(user_message)
-        
-        # Parse JSON response
-        import json
-        # Clean response - remove markdown code blocks if present
-        response_text = response.strip()
-        if response_text.startswith("```"):
-            response_text = response_text.split("```")[1]
-            if response_text.startswith("json"):
-                response_text = response_text[4:]
-        response_text = response_text.strip()
-        
-        data = json.loads(response_text)
-        
-        # Build nutrients list
-        nutrients = []
-        for n in data.get("nutrients", []):
-            nutrients.append(NutrientInfo(
-                name=n.get("name", ""),
-                value=str(n.get("value", "0")),
-                unit=n.get("unit", ""),
+        text = response.text.strip()
+        # Strip markdown fences if present
+        if text.startswith("```"):
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+        text = text.strip()
+
+        data = json.loads(text)
+
+        nutrients = [
+            NutrientInfo(
+                name=n["name"],
+                value=str(n["value"]),
+                unit=n["unit"],
                 percentage=n.get("percentage"),
                 status=n.get("status", "normal")
-            ))
-        
-        # Generate personalized alerts if user profile exists
+            )
+            for n in data.get("nutrients", [])
+        ]
+
         personalized_alerts = []
         if user_profile:
             personalized_alerts = generate_personalized_alerts(
-                user_profile,
-                data.get("ingredients", []),
-                nutrients
+                user_profile, data.get("ingredients", []), nutrients
             )
-        
-        result = AnalysisResult(
+
+        return AnalysisResult(
             product_name=data.get("product_name", "Producto desconocido"),
             brand=data.get("brand", "Desconocida"),
             serving_size=data.get("serving_size", "No especificado"),
@@ -324,427 +276,208 @@ IMPORTANTE: Responde SOLO con el JSON, sin texto adicional."""
             recommendations=data.get("recommendations", []),
             personalized_alerts=personalized_alerts
         )
-        
-        return result
-        
+
     except Exception as e:
-        logging.error(f"Gemini analysis error: {str(e)}")
+        logger.error(f"Gemini error: {e}")
         raise HTTPException(status_code=500, detail=f"Error en el análisis: {str(e)}")
 
-# ==================== AUTH ROUTES ====================
 
-@api_router.post("/auth/register", response_model=TokenResponse)
-async def register(data: UserCreate):
-    """Register a new user"""
-    # Check if email exists
-    existing = await db.users.find_one({"email": data.email.lower()})
-    if existing:
-        raise HTTPException(status_code=400, detail="El email ya está registrado")
-    
-    user_id = str(uuid.uuid4())
-    user = {
-        "id": user_id,
-        "email": data.email.lower(),
-        "password_hash": hash_password(data.password),
-        "name": data.name,
-        "profile": (data.profile or UserProfile()).model_dump(),
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    
-    await db.users.insert_one(user)
-    
-    # Create session
-    token = generate_token()
-    await db.sessions.insert_one({
-        "token": token,
-        "user_id": user_id,
-        "created_at": datetime.now(timezone.utc).isoformat()
-    })
-    
-    return TokenResponse(
-        token=token,
-        user=UserResponse(
-            id=user_id,
-            email=user["email"],
-            name=user["name"],
-            profile=UserProfile(**user["profile"]),
-            created_at=user["created_at"]
-        )
-    )
-
-@api_router.post("/auth/login", response_model=TokenResponse)
-async def login(data: UserLogin):
-    """Login user"""
-    user = await db.users.find_one({"email": data.email.lower()}, {"_id": 0})
-    if not user or user["password_hash"] != hash_password(data.password):
-        raise HTTPException(status_code=401, detail="Credenciales incorrectas")
-    
-    # Create new session
-    token = generate_token()
-    await db.sessions.insert_one({
-        "token": token,
-        "user_id": user["id"],
-        "created_at": datetime.now(timezone.utc).isoformat()
-    })
-    
-    return TokenResponse(
-        token=token,
-        user=UserResponse(
-            id=user["id"],
-            email=user["email"],
-            name=user["name"],
-            profile=UserProfile(**user.get("profile", {})),
-            created_at=user["created_at"]
-        )
-    )
-
-@api_router.post("/auth/logout")
-async def logout(user: dict = Depends(require_user), credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Logout user"""
-    await db.sessions.delete_one({"token": credentials.credentials})
-    return {"message": "Sesión cerrada"}
-
-@api_router.get("/auth/me", response_model=UserResponse)
-async def get_me(user: dict = Depends(require_user)):
-    """Get current user"""
-    return UserResponse(
-        id=user["id"],
-        email=user["email"],
-        name=user["name"],
-        profile=UserProfile(**user.get("profile", {})),
-        created_at=user["created_at"]
-    )
-
-@api_router.put("/auth/profile", response_model=UserResponse)
-async def update_profile(data: UserUpdate, user: dict = Depends(require_user)):
-    """Update user profile"""
-    update_data = {}
-    if data.name:
-        update_data["name"] = data.name
-    if data.profile:
-        update_data["profile"] = data.profile.model_dump()
-    
-    if update_data:
-        await db.users.update_one({"id": user["id"]}, {"$set": update_data})
-    
-    updated_user = await db.users.find_one({"id": user["id"]}, {"_id": 0})
-    return UserResponse(
-        id=updated_user["id"],
-        email=updated_user["email"],
-        name=updated_user["name"],
-        profile=UserProfile(**updated_user.get("profile", {})),
-        created_at=updated_user["created_at"]
-    )
-
-# ==================== ANALYSIS ROUTES ====================
+# ==================== ROUTES ====================
 
 @api_router.get("/")
 async def root():
-    return {"message": "NutriScan AI API - Análisis de etiquetas nutricionales con IA"}
+    return {"message": "NutriScan API funcionando ✅"}
 
 @api_router.post("/analyze", response_model=AnalysisResult)
-async def analyze_label(request: AnalyzeRequest, user: Optional[dict] = Depends(get_current_user)):
-    """Analyze a food label image using Gemini 3 Flash"""
-    
+async def analyze_label(
+    request: AnalyzeRequest,
+    user: Optional[dict] = Depends(get_current_user)
+):
     if not request.image_base64:
-        raise HTTPException(status_code=400, detail="Se requiere una imagen")
-    
-    # Get user profile if authenticated
+        raise HTTPException(status_code=400, detail="Se requiere imagen")
+
     user_profile = None
     user_id = None
+
     if user:
-        user_profile = UserProfile(**user.get("profile", {}))
         user_id = user["id"]
-    
-    # Analyze with Gemini
+        # Fetch profile from MongoDB if exists
+        user_doc = await db.users.find_one({"id": user_id}, {"_id": 0})
+        if user_doc and user_doc.get("profile"):
+            user_profile = UserProfile(**user_doc["profile"])
+
     result = await analyze_with_gemini(request.image_base64, user_profile)
     result.user_id = user_id
-    
-    # Store in database
+
     doc = result.model_dump()
-    doc['timestamp'] = doc['timestamp'].isoformat()
+    doc["timestamp"] = doc["timestamp"].isoformat()
     await db.scan_history.insert_one(doc)
-    
+
     return result
 
-@api_router.get("/history", response_model=List[AnalysisResult])
-async def get_scan_history(user: dict = Depends(require_user)):
-    """Get user's scan history"""
-    history = await db.scan_history.find(
-        {"user_id": user["id"]}, 
-        {"_id": 0}
-    ).sort("timestamp", -1).to_list(50)
-    
-    for item in history:
-        if isinstance(item['timestamp'], str):
-            item['timestamp'] = datetime.fromisoformat(item['timestamp'])
-    
-    return history
-
-# ==================== CHAT ROUTES ====================
-
-def get_personality_prompt(strictness_level: str) -> str:
-    """Get AI personality based on strictness level"""
-    personalities = {
-        "relaxed": """Eres un nutricionista amigable y relajado. 
-        - Sé comprensivo y no juzgues las elecciones alimentarias
-        - Da consejos suaves y positivos
-        - Si algo no es muy saludable, menciónalo con tacto
-        - Usa un tono casual y cercano""",
-        
-        "normal": """Eres un nutricionista profesional y equilibrado.
-        - Da información objetiva y clara
-        - Señala tanto lo positivo como lo negativo
-        - Ofrece alternativas cuando sea necesario
-        - Mantén un tono profesional pero accesible""",
-        
-        "strict": """Eres un nutricionista estricto y directo.
-        - Sé honesto sobre los aspectos negativos de los alimentos
-        - Critica los ultraprocesados y azúcares añadidos
-        - No suavices la verdad, el usuario quiere claridad
-        - Da recomendaciones firmes para mejorar la dieta""",
-        
-        "very_strict": """Eres un nutricionista MUY EXIGENTE y sin filtros.
-        - Sé brutalmente honesto sobre la comida basura y ultraprocesados
-        - Usa sarcasmo cuando el producto sea claramente poco saludable
-        - Compara los ingredientes dañinos con lo que realmente son (ej: "esto es básicamente azúcar disfrazada")
-        - No tengas piedad con los productos llenos de aditivos
-        - El usuario quiere la verdad cruda, dásela
-        - Si algo es malo, dilo claramente: "esto es veneno procesado" o "tu cuerpo no necesita esta basura"
-        - Pero también reconoce y celebra cuando algo es genuinamente saludable"""
-    }
-    return personalities.get(strictness_level, personalities["normal"])
 
 @api_router.post("/chat", response_model=ChatResponse)
-async def chat_with_ai(request: ChatRequest, user: Optional[dict] = Depends(get_current_user)):
-    """Chat with AI about the analyzed product"""
-    
-    # Get analysis from database
+async def chat_with_ai(
+    request: ChatRequest,
+    user: Optional[dict] = Depends(get_current_user)
+):
     analysis = await db.scan_history.find_one({"id": request.analysis_id}, {"_id": 0})
     if not analysis:
         raise HTTPException(status_code=404, detail="Análisis no encontrado")
-    
-    # Get or create chat history for this analysis
-    chat_doc = await db.chat_history.find_one({"analysis_id": request.analysis_id}, {"_id": 0})
-    
-    if not chat_doc:
-        chat_doc = {
-            "analysis_id": request.analysis_id,
-            "user_id": user["id"] if user else None,
-            "messages": [],
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-        await db.chat_history.insert_one(chat_doc)
-    
-    # Build user context
-    user_context = ""
+
     strictness = "normal"
+    user_context = ""
     if user:
-        profile = user.get("profile", {})
-        strictness = profile.get("strictness_level", "normal")
-        
-        if profile.get("weight"):
-            user_context += f"\n- Peso: {profile['weight']} kg"
-        if profile.get("height"):
-            user_context += f"\n- Altura: {profile['height']} cm"
-        if profile.get("sex"):
-            sex_map = {"male": "Masculino", "female": "Femenino", "other": "Otro"}
-            user_context += f"\n- Sexo: {sex_map.get(profile['sex'], profile['sex'])}"
-        if profile.get("activity_level"):
-            activity_map = {"sedentary": "Sedentario", "light": "Ligera", "moderate": "Moderada", "active": "Activa", "very_active": "Muy activa"}
-            user_context += f"\n- Actividad física: {activity_map.get(profile['activity_level'], profile['activity_level'])}"
-        if profile.get("goal"):
-            goal_map = {"lose_weight": "Perder peso", "maintain": "Mantener peso", "gain_muscle": "Ganar músculo", "health": "Mejorar salud"}
-            user_context += f"\n- Objetivo: {goal_map.get(profile['goal'], profile['goal'])}"
-        if profile.get("allergies"):
-            user_context += f"\n- Alergias: {', '.join(profile['allergies'])}"
-        if profile.get("conditions"):
-            user_context += f"\n- Condiciones de salud: {', '.join(profile['conditions'])}"
-    
-    # Build analysis context
-    analysis_context = f"""
-PRODUCTO ANALIZADO:
-- Nombre: {analysis.get('product_name', 'Desconocido')}
-- Marca: {analysis.get('brand', 'Desconocida')}
-- Porción: {analysis.get('serving_size', 'No especificada')}
-- Puntuación de salud: {analysis.get('health_score', 'N/A')}/100
+        user_doc = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+        if user_doc:
+            profile = user_doc.get("profile", {})
+            strictness = profile.get("strictness_level", "normal")
 
-INFORMACIÓN NUTRICIONAL:
-"""
-    for nutrient in analysis.get('nutrients', []):
-        analysis_context += f"- {nutrient['name']}: {nutrient['value']} {nutrient['unit']}"
-        if nutrient.get('percentage'):
-            analysis_context += f" ({nutrient['percentage']}% VD)"
-        analysis_context += f" - Estado: {nutrient.get('status', 'normal')}\n"
-    
-    if analysis.get('ingredients'):
-        analysis_context += f"\nINGREDIENTES: {', '.join(analysis['ingredients'])}"
-    
-    if analysis.get('warnings'):
-        analysis_context += f"\nADVERTENCIAS: {', '.join(analysis['warnings'])}"
-    
-    # Build conversation history
-    conversation_history = ""
-    for msg in chat_doc.get("messages", [])[-10:]:  # Last 10 messages for context
-        role = "Usuario" if msg["role"] == "user" else "Asistente"
-        conversation_history += f"\n{role}: {msg['content']}"
-    
-    # Get personality based on strictness
     personality = get_personality_prompt(strictness)
-    
-    system_prompt = f"""{personality}
 
-CONTEXTO DEL ANÁLISIS:
-{analysis_context}
+    nutrients_text = "\n".join(
+        f"- {n['name']}: {n['value']} {n['unit']}"
+        for n in analysis.get("nutrients", [])
+    )
 
-{"PERFIL DEL USUARIO:" + user_context if user_context else ""}
+    system = f"""{personality}
 
-{"CONVERSACIÓN PREVIA:" + conversation_history if conversation_history else ""}
+PRODUCTO: {analysis.get('product_name')} ({analysis.get('brand')})
+Puntuación: {analysis.get('health_score')}/100
+NUTRIENTES:
+{nutrients_text}
+INGREDIENTES: {', '.join(analysis.get('ingredients', []))}
 
-INSTRUCCIONES:
-- Responde en ESPAÑOL
-- Sé conciso pero informativo (2-4 frases máximo por respuesta)
-- Basa tus respuestas en los datos del análisis y el perfil del usuario
-- Si el usuario pregunta algo específico sobre un nutriente, dale datos concretos
-- Adapta tu tono según el nivel de exigencia configurado
-- Si hay una imagen adjunta, analízala en contexto con la pregunta"""
+Responde en español, máximo 3-4 frases. Sé directo y útil."""
 
     try:
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=f"nutriscan-chat-{request.analysis_id}",
-            system_message=system_prompt
-        ).with_model("gemini", "gemini-3-flash-preview")
-        
-        # Build message with optional image
-        if request.image_base64:
-            image_content = ImageContent(image_base64=request.image_base64)
-            user_message = UserMessage(
-                text=request.message,
-                file_contents=[image_content]
-            )
-        else:
-            user_message = UserMessage(text=request.message)
-        
-        response = await chat.send_message(user_message)
-        
-        # Save messages to history
+        model = genai.GenerativeModel("gemini-1.5-flash", system_instruction=system)
+        response = model.generate_content(request.message)
+
+        # Save to chat history
         await db.chat_history.update_one(
             {"analysis_id": request.analysis_id},
-            {"$push": {"messages": {
-                "$each": [
-                    {"role": "user", "content": request.message, "timestamp": datetime.now(timezone.utc).isoformat()},
-                    {"role": "assistant", "content": response, "timestamp": datetime.now(timezone.utc).isoformat()}
-                ]
-            }}}
+            {"$push": {"messages": {"$each": [
+                {"role": "user", "content": request.message, "timestamp": datetime.now(timezone.utc).isoformat()},
+                {"role": "assistant", "content": response.text, "timestamp": datetime.now(timezone.utc).isoformat()}
+            ]}}},
+            upsert=True
         )
-        
-        return ChatResponse(response=response)
-        
+
+        return ChatResponse(response=response.text)
+
     except Exception as e:
-        logging.error(f"Chat error: {str(e)}")
+        logger.error(f"Chat error: {e}")
         raise HTTPException(status_code=500, detail=f"Error en el chat: {str(e)}")
 
+
 @api_router.get("/chat/{analysis_id}")
-async def get_chat_history(analysis_id: str, user: dict = Depends(require_user)):
-    """Get chat history for an analysis"""
-    chat_doc = await db.chat_history.find_one(
-        {"analysis_id": analysis_id, "user_id": user["id"]}, 
-        {"_id": 0}
-    )
-    
+async def get_chat_history(
+    analysis_id: str,
+    user: dict = Depends(get_current_user)
+):
+    chat_doc = await db.chat_history.find_one({"analysis_id": analysis_id}, {"_id": 0})
     if not chat_doc:
         return {"messages": []}
-    
     return {"messages": chat_doc.get("messages", [])}
 
-# ==================== GENERAL CHAT ROUTES ====================
-
-class GeneralChatRequest(BaseModel):
-    message: str
-    user_profile: Optional[dict] = None
 
 @api_router.post("/general-chat")
 async def general_chat(request: GeneralChatRequest):
-    """General nutrition chat without product analysis"""
-    
-    # Build user context from profile
-    user_context = ""
     strictness = "normal"
-    
+    user_context = ""
+
     if request.user_profile:
         profile = request.user_profile
         strictness = profile.get("strictness_level", "normal")
-        
-        if profile.get("weight"):
-            user_context += f"\n- Peso: {profile['weight']} kg"
-        if profile.get("height"):
-            user_context += f"\n- Altura: {profile['height']} cm"
-        if profile.get("sex"):
-            sex_map = {"male": "Masculino", "female": "Femenino", "other": "Otro"}
-            user_context += f"\n- Sexo: {sex_map.get(profile['sex'], profile['sex'])}"
-        if profile.get("activity_level"):
-            activity_map = {"sedentary": "Sedentario", "light": "Ligera", "moderate": "Moderada", "active": "Activa", "very_active": "Muy activa"}
-            user_context += f"\n- Actividad física: {activity_map.get(profile['activity_level'], profile['activity_level'])}"
         if profile.get("goal"):
-            goal_map = {"lose_weight": "Perder peso", "maintain": "Mantener peso", "gain_muscle": "Ganar músculo", "health": "Mejorar salud"}
-            user_context += f"\n- Objetivo: {goal_map.get(profile['goal'], profile['goal'])}"
+            goal_map = {"lose_weight": "Perder peso", "maintain": "Mantener", "gain_muscle": "Ganar músculo", "health": "Mejorar salud"}
+            user_context += f"\nObjetivo: {goal_map.get(profile['goal'], profile['goal'])}"
         if profile.get("allergies"):
-            user_context += f"\n- Alergias: {', '.join(profile['allergies'])}"
+            user_context += f"\nAlergias: {', '.join(profile['allergies'])}"
         if profile.get("conditions"):
-            user_context += f"\n- Condiciones de salud: {', '.join(profile['conditions'])}"
-    
-    # Get personality based on strictness
+            user_context += f"\nCondiciones: {', '.join(profile['conditions'])}"
+
     personality = get_personality_prompt(strictness)
-    
-    system_prompt = f"""{personality}
-
-Eres NutriScan AI, un asistente experto en nutrición y alimentación saludable.
-
-{"PERFIL DEL USUARIO:" + user_context if user_context else ""}
-
-INSTRUCCIONES:
-- Responde en ESPAÑOL
-- Sé conciso pero informativo (2-4 frases máximo por respuesta)
-- Puedes responder sobre nutrición, dietas, alimentos saludables, consejos de alimentación
-- Si el usuario tiene perfil, personaliza las respuestas según sus objetivos y condiciones
-- Adapta tu tono según el nivel de exigencia configurado
-- Si no tienes información suficiente, pide más detalles
-- No des consejos médicos específicos, recomienda consultar profesionales cuando sea necesario"""
+    system = f"""{personality}
+Eres NutriScan AI, asistente experto en nutrición.
+{user_context}
+Responde en español, máximo 3-4 frases. No des consejos médicos específicos."""
 
     try:
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=f"nutriscan-general-{uuid.uuid4()}",
-            system_message=system_prompt
-        ).with_model("gemini", "gemini-3-flash-preview")
-        
-        user_message = UserMessage(text=request.message)
-        response = await chat.send_message(user_message)
-        
-        return {"response": response}
-        
+        model = genai.GenerativeModel("gemini-1.5-flash", system_instruction=system)
+        response = model.generate_content(request.message)
+        return {"response": response.text}
+
     except Exception as e:
-        logging.error(f"General chat error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error en el chat: {str(e)}")
+        logger.error(f"General chat error: {e}")
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
-# Include router and middleware
+
+# ==================== APP SETUP ====================
+
 app.include_router(api_router)
-
 app.add_middleware(
     CORSMiddleware,
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
 @app.on_event("shutdown")
-async def shutdown_db_client():
+async def shutdown():
     client.close()
+```
+
+---
+
+Ahora actualiza también `backend/requirements.txt` con este contenido:
+```
+fastapi==0.111.0
+uvicorn==0.30.1
+motor==3.4.0
+python-dotenv==1.0.1
+google-generativeai==0.7.2
+pydantic==2.7.1
+python-jose==3.3.0
+httpx==0.27.0
+```
+
+---
+
+Y el `backend/.env` local (nunca lo subas a GitHub):
+```
+MONGO_URL=tu_mongo_url_de_atlas
+DB_NAME=nutriscan_db
+GEMINI_API_KEY=tu_api_key_de_gemini
+```
+
+---
+
+## Ahora los pasos para desplegarlo en Render
+
+**Paso 1 — Consigue tu Gemini API Key gratis**
+Ve a [aistudio.google.com](https://aistudio.google.com) → "Get API Key" → copia la key.
+
+**Paso 2 — Crea cuenta en Render**
+Ve a [render.com](https://render.com) → regístrate con tu GitHub.
+
+**Paso 3 — Nuevo Web Service**
+- "New" → "Web Service" → conecta tu repo de GitHub
+- Root Directory: `backend`
+- Build Command: `pip install -r requirements.txt`
+- Start Command: `uvicorn server:app --host 0.0.0.0 --port $PORT`
+
+**Paso 4 — Variables de entorno en Render**
+En el panel de Render añade:
+```
+MONGO_URL        = tu_mongo_connection_string
+DB_NAME          = nutriscan_db
+GEMINI_API_KEY   = tu_key_de_gemini
+```
+
+**Paso 5 — Actualiza el frontend**
+Una vez Render te dé la URL (algo como `https://nutriscan-api.onrender.com`), actualiza en Vercel:
+```
+REACT_APP_BACKEND_URL=https://nutriscan-api.onrender.com
