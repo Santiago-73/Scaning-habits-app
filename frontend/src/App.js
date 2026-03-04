@@ -1629,9 +1629,10 @@ const ProfileModal = ({ isOpen, onClose }) => {
 
 // ==================== HOME PAGE ====================
 const Home = () => {
-  const { user, token, loading } = useAuth();
+  const { user, token, loading, profile } = useAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showGeneralChat, setShowGeneralChat] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [analysisResult, setAnalysisResult] = useState(null);
