@@ -1,75 +1,94 @@
 # NutriScan AI - PRD (Product Requirements Document)
 
-## Original Problem Statement
-Web App para escanear etiquetas alimenticias con análisis de IA (Gemini 3 Flash). Sistema de cuentas con perfil completo (alergias, condiciones, peso, altura, sexo, actividad, objetivo). Chat persistente con IA en pantalla de resultados, con personalidad basada en "Nivel de Exigencia" del usuario.
+## Última Actualización: 2026-03-03
 
-## User Personas
-- **Usuario Principal**: Consumidores que analizan etiquetas nutricionales
-- **Usuario con Restricciones**: Celiacos, diabéticos, alérgicos que necesitan alertas personalizadas
-- **Usuario Fitness**: Personas con objetivos de pérdida de peso o ganancia muscular
+## Resumen de Cambios
+- ✅ Migración a Supabase Auth
+- ✅ Chat general accesible desde pantalla principal
+- ✅ Perfiles de usuario en localStorage
 
-## Core Requirements Implemented
+## Tech Stack
+- **Frontend**: React + Tailwind CSS + Shadcn/UI
+- **Backend**: FastAPI + MongoDB (para análisis y chat)
+- **Auth**: Supabase Auth (registro/login)
+- **IA**: Gemini 3 Flash via emergentintegrations
+- **Perfiles**: localStorage (nutriscan_profile_{userId})
 
-### ✅ Análisis de Etiquetas
-- Botón de escaneo con cámara trasera (`capture="environment"`)
-- Opción de subir desde galería
-- Análisis REAL con Gemini 3 Flash
-- Resultados: Health Score, nutrientes, ingredientes, advertencias, recomendaciones
+## Variables de Entorno (para Vercel)
 
-### ✅ Sistema de Cuentas
-- Registro con perfil completo en 3 pasos
-- Login con tokens persistentes
-- Perfil editable con campos:
-  - Peso, altura, sexo
-  - Alergias (gluten, lactosa, frutos secos, huevo, mariscos, soja, pescado)
-  - Condiciones (celiaco, diabético, hipertenso, colesterol)
-  - Nivel de actividad (sedentario → muy activa)
-  - Objetivo (perder peso, mantener, ganar músculo, mejorar salud)
-  - **Nivel de Exigencia** (relajado, normal, estricto, sin filtros)
+### Frontend (.env)
+```
+REACT_APP_BACKEND_URL=https://tu-backend-url.com
+REACT_APP_SUPABASE_URL=https://grchmdtogimkpchswxig.supabase.co
+REACT_APP_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
 
-### ✅ Alertas Personalizadas
-- Detección automática de alérgenos en ingredientes
-- Alertas para celiacos (gluten)
-- Alertas para diabéticos (azúcar)
-- Alertas para hipertensos (sodio)
+### Backend (.env)
+```
+MONGO_URL=tu-mongodb-url
+DB_NAME=nutriscan_db
+EMERGENT_LLM_KEY=tu-emergent-key
+```
 
-### ✅ Chat IA Persistente (NUEVO)
-- Componente de chat estilo WhatsApp en pantalla de resultados
-- Burbujas de usuario (verde) y asistente (gris)
-- Preguntas sugeridas para iniciar conversación
-- Contexto multimodal: imagen + análisis + perfil del usuario
-- Historial de chat persistente en MongoDB
-- **Personalidad según Nivel de Exigencia**:
-  - Relajado: Consejos suaves y comprensivos
-  - Normal: Información equilibrada
-  - Estricto: Críticas honestas y directas
-  - Sin filtros: La verdad cruda sobre la comida (sarcasmo incluido)
+## Funcionalidades Implementadas
+
+### 1. Autenticación (Supabase)
+- `supabase.auth.signUp()` - Registro de usuarios
+- `supabase.auth.signInWithPassword()` - Login
+- `supabase.auth.signOut()` - Logout
+- Perfiles guardados en localStorage
+
+### 2. Escáner de Etiquetas
+- Cámara trasera (`capture="environment"`)
+- Subida desde galería
+- Análisis con Gemini 3 Flash
+- Resultados: nutrientes, ingredientes, advertencias, recomendaciones
+- Health Score (0-100)
+
+### 3. Chat IA en Análisis
+- Contexto: imagen + análisis + perfil usuario
+- Preguntas de seguimiento sobre el producto
+- Historial persistente en MongoDB
+
+### 4. Chat General (NUEVO)
+- Botón flotante en pantalla principal
+- Preguntas generales sobre nutrición
+- Respuestas personalizadas según perfil
+- Endpoint: POST /api/general-chat
+
+### 5. Alertas Personalizadas
+- Detección de alérgenos
+- Alertas para: celiacos, diabéticos, hipertensos
+- Basadas en perfil del usuario
+
+### 6. Nivel de Exigencia (Personalidad IA)
+- Relajado: consejos suaves
+- Normal: información equilibrada
+- Estricto: críticas honestas
+- Sin filtros: verdad cruda
 
 ## API Endpoints
 
-### Auth
-- `POST /api/auth/register` - Registro con perfil
-- `POST /api/auth/login` - Login
-- `POST /api/auth/logout` - Cerrar sesión
-- `GET /api/auth/me` - Usuario actual
-- `PUT /api/auth/profile` - Actualizar perfil
-
-### Analysis
-- `POST /api/analyze` - Analizar etiqueta con Gemini 3 Flash
+### Backend (/api)
+- `POST /api/analyze` - Analizar etiqueta
+- `POST /api/chat` - Chat sobre producto analizado
+- `POST /api/general-chat` - Chat general de nutrición
 - `GET /api/history` - Historial de escaneos
 
-### Chat
-- `POST /api/chat` - Enviar mensaje (multimodal)
-- `GET /api/chat/{analysis_id}` - Obtener historial de chat
+### Supabase Auth (frontend directo)
+- `supabase.auth.signUp()`
+- `supabase.auth.signInWithPassword()`
+- `supabase.auth.signOut()`
+- `supabase.auth.getSession()`
 
-## Tech Stack
-- Frontend: React + Tailwind CSS + Shadcn/UI
-- Backend: FastAPI + MongoDB
-- IA: Gemini 3 Flash via emergentintegrations
-- Despliegue: Compatible con Vercel
+## Archivos Clave
+- `/app/frontend/src/App.js` - Aplicación principal
+- `/app/frontend/src/lib/supabase.js` - Cliente Supabase
+- `/app/frontend/.env` - Variables de entorno frontend
+- `/app/backend/server.py` - API FastAPI
+- `/app/backend/.env` - Variables de entorno backend
 
 ## Next Tasks
-1. Crear páginas legales (Privacidad, Términos) para AdSense
-2. PWA para instalación en móvil
+1. Crear páginas legales (Privacidad, Términos)
+2. Implementar PWA
 3. Añadir historial de escaneos en UI
-4. Compartir resultados
