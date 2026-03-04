@@ -318,6 +318,51 @@ class NutriScanAPITester:
             print("   ℹ️ Test user doesn't exist or login failed - this is expected if user wasn't created yet")
             return False
 
+    def test_general_chat(self):
+        """Test the new general chat endpoint"""
+        success, response = self.run_test(
+            "General Chat Endpoint",
+            "POST",
+            "general-chat",
+            200,
+            data={
+                "message": "¿Qué alimentos son buenos para perder peso?",
+                "user_profile": {
+                    "weight": 70.0,
+                    "height": 175.0,
+                    "sex": "male",
+                    "allergies": ["gluten"],
+                    "conditions": ["celiac"],
+                    "activity_level": "moderate",
+                    "goal": "lose_weight",
+                    "strictness_level": "normal"
+                }
+            }
+        )
+        
+        if success:
+            response_text = response.get('response', '')
+            print(f"   ✅ General chat response received: {response_text[:100]}...")
+            print(f"   ✅ Response length: {len(response_text)} characters")
+            
+            # Test without user profile
+            success2, response2 = self.run_test(
+                "General Chat Without Profile",
+                "POST",
+                "general-chat",
+                200,
+                data={
+                    "message": "¿Cuánta proteína necesito al día?"
+                }
+            )
+            
+            if success2:
+                response_text2 = response2.get('response', '')
+                print(f"   ✅ General chat without profile: {response_text2[:100]}...")
+                return True
+        
+        return success
+
 def main():
     print("=== NUTRISCAN AI BACKEND API TESTING ===")
     print(f"Testing at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
