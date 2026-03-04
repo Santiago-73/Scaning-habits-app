@@ -658,6 +658,76 @@ async def get_chat_history(analysis_id: str, user: dict = Depends(require_user))
     
     return {"messages": chat_doc.get("messages", [])}
 
+# ==================== GENERAL CHAT ROUTES ====================
+
+class GeneralChatRequest(BaseModel):
+    message: str
+    user_profile: Optional[dict] = None
+
+@api_router.post("/general-chat")
+async def general_chat(request: GeneralChatRequest):
+    """General nutrition chat without product analysis"""
+    
+    # Build user context from profile
+    user_context = ""
+    strictness = "normal"
+    
+    if request.user_profile:
+        profile = request.user_profile
+        strictness = profile.get("strictness_level", "normal")
+        
+        if profile.get("weight"):
+            user_context += f"\n- Peso: {profile['weight']} kg"
+        if profile.get("height"):
+            user_context += f"\n- Altura: {profile['height']} cm"
+        if profile.get("sex"):
+            sex_map = {"male": "Masculino", "female": "Femenino", "other": "Otro"}
+            user_context += f"\n- Sexo: {sex_map.get(profile['sex'], profile['sex'])}"
+        if profile.get("activity_level"):
+            activity_map = {"sedentary": "Sedentario", "light": "Ligera", "moderate": "Moderada", "active": "Activa", "very_active": "Muy activa"}
+            user_context += f"\n- Actividad física: {activity_map.get(profile['activity_level'], profile['activity_level'])}"
+        if profile.get("goal"):
+            goal_map = {"lose_weight": "Perder peso", "maintain": "Mantener peso", "gain_muscle": "Ganar músculo", "health": "Mejorar salud"}
+            user_context += f"\n- Objetivo: {goal_map.get(profile['goal'], profile['goal'])}"
+        if profile.get("allergies"):
+            user_context += f"\n- Alergias: {', '.join(profile['allergies'])}"
+        if profile.get("conditions"):
+            user_context += f"\n- Condiciones de salud: {', '.join(profile['conditions'])}"
+    
+    # Get personality based on strictness
+    personality = get_personality_prompt(strictness)
+    
+    system_prompt = f"""{personality}
+
+Eres NutriScan AI, un asistente experto en nutrición y alimentación saludable.
+
+{"PERFIL DEL USUARIO:" + user_context if user_context else ""}
+
+INSTRUCCIONES:
+- Responde en ESPAÑOL
+- Sé conciso pero informativo (2-4 frases máximo por respuesta)
+- Puedes responder sobre nutrición, dietas, alimentos saludables, consejos de alimentación
+- Si el usuario tiene perfil, personaliza las respuestas según sus objetivos y condiciones
+- Adapta tu tono según el nivel de exigencia configurado
+- Si no tienes información suficiente, pide más detalles
+- No des consejos médicos específicos, recomienda consultar profesionales cuando sea necesario"""
+
+    try:
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=f"nutriscan-general-{uuid.uuid4()}",
+            system_message=system_prompt
+        ).with_model("gemini", "gemini-3-flash-preview")
+        
+        user_message = UserMessage(text=request.message)
+        response = await chat.send_message(user_message)
+        
+        return {"response": response}
+        
+    except Exception as e:
+        logging.error(f"General chat error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error en el chat: {str(e)}")
+
 # Include router and middleware
 app.include_router(api_router)
 
