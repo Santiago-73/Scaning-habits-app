@@ -1753,7 +1753,7 @@ const Home = () => {
       {/* Floating Chat Button */}
       <button
         onClick={() => setShowGeneralChat(true)}
-        className="fixed bottom-6 right-6 w-14 h-14 bg-green-600 rounded-full flex items-center justify-center shadow-lg hover:bg-green-500 transition-all duration-200 hover:scale-110 neon-glow z-40"
+        className="fixed bottom-24 right-6 w-14 h-14 bg-green-600 rounded-full flex items-center justify-center shadow-lg hover:bg-green-500 transition-all duration-200 hover:scale-110 neon-glow z-[9999]"
         data-testid="open-general-chat"
         aria-label="Abrir chat de nutrición"
       >
