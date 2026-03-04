@@ -1229,8 +1229,8 @@ const GeneralChat = ({ userProfile, onClose }) => {
 
   return (
     <Dialog open={true} onOpenChange={onClose}>
-      <DialogContent className="bg-zinc-950 border-zinc-800 max-w-lg mx-auto h-[80vh] flex flex-col p-0">
-        <DialogHeader className="p-4 border-b border-zinc-800">
+      <DialogContent className="bg-zinc-950 border-zinc-800 max-w-lg mx-auto max-h-[80vh] flex flex-col p-0 overflow-hidden">
+        <DialogHeader className="p-4 border-b border-zinc-800 flex-shrink-0">
           <DialogTitle className="text-lg font-semibold text-zinc-50 flex items-center gap-2">
             <Bot className="w-5 h-5 text-green-500" />
             Chat con NutriScan AI
@@ -1240,7 +1240,7 @@ const GeneralChat = ({ userProfile, onClose }) => {
           </DialogDescription>
         </DialogHeader>
         
-        <ScrollArea className="flex-1 p-4">
+        <div className="flex-1 overflow-y-auto p-4 min-h-[300px]">
           {messages.length === 0 ? (
             <div className="text-center py-8">
               <Bot className="w-16 h-16 text-zinc-700 mx-auto mb-4" />
