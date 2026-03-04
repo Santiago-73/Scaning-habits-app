@@ -71,72 +71,129 @@ const AuthContext = createContext(null);
 
 const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem('nutriscan_token'));
+  const [session, setSession] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Load user profile from localStorage
+  const loadProfile = (userId) => {
+    const saved = localStorage.getItem(`nutriscan_profile_${userId}`);
+    if (saved) {
+      return JSON.parse(saved);
+    }
+    return {
+      weight: null, height: null, sex: null,
+      allergies: [], conditions: [],
+      activity_level: null, goal: null, strictness_level: "normal"
+    };
+  };
+
+  // Save profile to localStorage
+  const saveProfile = (userId, profileData) => {
+    localStorage.setItem(`nutriscan_profile_${userId}`, JSON.stringify(profileData));
+  };
+
   useEffect(() => {
-    const checkAuth = async () => {
-      const savedToken = localStorage.getItem('nutriscan_token');
-      if (savedToken) {
-        try {
-          const response = await axios.get(`${API}/auth/me`, {
-            headers: { Authorization: `Bearer ${savedToken}` }
-          });
-          setUser(response.data);
-          setToken(savedToken);
-        } catch (error) {
-          localStorage.removeItem('nutriscan_token');
-          setToken(null);
-          setUser(null);
-        }
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session?.user) {
+        const userProfile = loadProfile(session.user.id);
+        setUser({
+          id: session.user.id,
+          email: session.user.email,
+          name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Usuario',
+          profile: userProfile
+        });
+        setProfile(userProfile);
       }
       setLoading(false);
-    };
-    checkAuth();
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session?.user) {
+        const userProfile = loadProfile(session.user.id);
+        setUser({
+          id: session.user.id,
+          email: session.user.email,
+          name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Usuario',
+          profile: userProfile
+        });
+        setProfile(userProfile);
+      } else {
+        setUser(null);
+        setProfile(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const login = async (email, password) => {
-    const response = await axios.post(`${API}/auth/login`, { email, password });
-    localStorage.setItem('nutriscan_token', response.data.token);
-    setToken(response.data.token);
-    setUser(response.data.user);
-    return response.data;
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+    if (error) throw error;
+    return data;
   };
 
-  const register = async (name, email, password, profile) => {
-    const response = await axios.post(`${API}/auth/register`, { 
-      name, email, password, profile 
+  const register = async (name, email, password, profileData) => {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { name }
+      }
     });
-    localStorage.setItem('nutriscan_token', response.data.token);
-    setToken(response.data.token);
-    setUser(response.data.user);
-    return response.data;
+    if (error) throw error;
+    
+    // Save profile to localStorage
+    if (data.user && profileData) {
+      saveProfile(data.user.id, profileData);
+      setProfile(profileData);
+    }
+    
+    return data;
   };
 
   const logout = async () => {
-    try {
-      if (token) {
-        await axios.post(`${API}/auth/logout`, {}, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-      }
-    } catch (e) {
-      console.error("Logout error:", e);
-    }
-    localStorage.removeItem('nutriscan_token');
-    setToken(null);
+    const { error } = await supabase.auth.signOut();
+    if (error) console.error("Logout error:", error);
     setUser(null);
+    setProfile(null);
+    setSession(null);
   };
 
   const updateProfile = async (profileData) => {
-    const response = await axios.put(`${API}/auth/profile`, profileData, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    setUser(response.data);
-    return response.data;
+    if (!user) throw new Error("No user logged in");
+    
+    // Update name in Supabase if provided
+    if (profileData.name) {
+      await supabase.auth.updateUser({
+        data: { name: profileData.name }
+      });
+    }
+    
+    // Save profile to localStorage
+    const newProfile = profileData.profile || profile;
+    saveProfile(user.id, newProfile);
+    setProfile(newProfile);
+    
+    const updatedUser = {
+      ...user,
+      name: profileData.name || user.name,
+      profile: newProfile
+    };
+    setUser(updatedUser);
+    
+    return updatedUser;
   };
 
-  const value = { user, token, loading, login, register, logout, updateProfile };
+  const token = session?.access_token;
+  const value = { user, token, loading, login, register, logout, updateProfile, profile };
 
   return (
     <AuthContext.Provider value={value}>
