@@ -1175,6 +1175,144 @@ const ProductChat = ({ analysisId, imageBase64, token }) => {
   );
 };
 
+// ==================== GENERAL CHAT COMPONENT ====================
+const GeneralChat = ({ userProfile, onClose }) => {
+  const [messages, setMessages] = useState([]);
+  const [inputValue, setInputValue] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const sendMessage = async () => {
+    if (!inputValue.trim() || isLoading) return;
+
+    const userMessage = { role: "user", content: inputValue.trim() };
+    setMessages(prev => [...prev, userMessage]);
+    setInputValue("");
+    setIsLoading(true);
+
+    try {
+      const response = await axios.post(`${API}/general-chat`, {
+        message: userMessage.content,
+        user_profile: userProfile
+      });
+
+      const assistantMessage = { role: "assistant", content: response.data.response };
+      setMessages(prev => [...prev, assistantMessage]);
+    } catch (error) {
+      console.error("Chat error:", error);
+      toast.error("Error al enviar el mensaje");
+      setMessages(prev => prev.slice(0, -1));
+    } finally {
+      setIsLoading(false);
+      inputRef.current?.focus();
+    }
+  };
+
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
+  const suggestedQuestions = [
+    "¿Qué alimentos son buenos para perder peso?",
+    "¿Cuánta proteína necesito al día?",
+    "¿Qué snacks saludables me recomiendas?",
+    "¿Cómo puedo reducir el azúcar?"
+  ];
+
+  return (
+    <Dialog open={true} onOpenChange={onClose}>
+      <DialogContent className="bg-zinc-950 border-zinc-800 max-w-lg mx-auto h-[80vh] flex flex-col p-0">
+        <DialogHeader className="p-4 border-b border-zinc-800">
+          <DialogTitle className="text-lg font-semibold text-zinc-50 flex items-center gap-2">
+            <Bot className="w-5 h-5 text-green-500" />
+            Chat con NutriScan AI
+          </DialogTitle>
+          <DialogDescription className="text-sm text-zinc-500">
+            Pregúntame sobre nutrición, dietas y alimentación saludable
+          </DialogDescription>
+        </DialogHeader>
+        
+        <ScrollArea className="flex-1 p-4">
+          {messages.length === 0 ? (
+            <div className="text-center py-8">
+              <Bot className="w-16 h-16 text-zinc-700 mx-auto mb-4" />
+              <p className="text-sm text-zinc-500 mb-6">
+                ¡Hola! Soy tu asistente de nutrición. ¿En qué puedo ayudarte?
+              </p>
+              <div className="flex flex-wrap gap-2 justify-center">
+                {suggestedQuestions.map((q, i) => (
+                  <button
+                    key={i}
+                    onClick={() => { setInputValue(q); inputRef.current?.focus(); }}
+                    className="text-xs px-3 py-2 rounded-full bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300 transition-colors duration-200"
+                    data-testid={`general-suggested-${i}`}
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <>
+              {messages.map((msg, index) => (
+                <ChatBubble key={index} message={msg} isUser={msg.role === 'user'} />
+              ))}
+              {isLoading && (
+                <div className="flex justify-start mb-3">
+                  <div className="flex items-end gap-2">
+                    <div className="w-7 h-7 rounded-full bg-zinc-700 flex items-center justify-center">
+                      <Bot className="w-4 h-4 text-green-400" />
+                    </div>
+                    <div className="px-4 py-3 rounded-2xl rounded-bl-md bg-zinc-800">
+                      <div className="flex gap-1">
+                        <span className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce" style={{animationDelay: '0ms'}}></span>
+                        <span className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce" style={{animationDelay: '150ms'}}></span>
+                        <span className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce" style={{animationDelay: '300ms'}}></span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </>
+          )}
+        </ScrollArea>
+
+        <div className="p-4 border-t border-zinc-800 bg-zinc-900/50">
+          <div className="flex gap-2">
+            <Input
+              ref={inputRef}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder="Escribe tu pregunta..."
+              className="flex-1 bg-zinc-800 border-zinc-700 text-zinc-200 placeholder:text-zinc-500"
+              disabled={isLoading}
+              data-testid="general-chat-input"
+            />
+            <Button
+              onClick={sendMessage}
+              disabled={!inputValue.trim() || isLoading}
+              className="bg-green-600 hover:bg-green-500 px-4"
+              data-testid="general-chat-send"
+            >
+              <Send className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 // ==================== RESULTS VIEW ====================
 const ResultsView = ({ result, onBack, imageBase64 }) => {
   const { token } = useAuth();
