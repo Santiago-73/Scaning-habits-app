@@ -373,6 +373,7 @@ def main():
     tests = [
         ("API Root Endpoint", tester.test_root_endpoint),
         ("Test User Login (chat_test@test.com)", tester.test_test_user_login),
+        ("General Chat Endpoint", tester.test_general_chat),
         ("User Registration", tester.test_register),
         ("Get Current User", tester.test_get_me),
         ("Analyze Label", tester.test_analyze_endpoint),
