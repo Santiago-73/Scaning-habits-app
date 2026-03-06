@@ -316,7 +316,7 @@ const AuthModal = ({ isOpen, onClose, onSuccess, initialMode = "login" }) => {
         strictness_level: formData.strictness_level || "normal"
       };
       await register(formData.name, formData.email, formData.password, profile);
-      toast.success("¡Cuenta creada con éxito! Revisa tu email para confirmar.");
+      toast.success("¡Cuenta creada con éxito!");
       onSuccess?.();
       handleClose();
     } catch (error) {
