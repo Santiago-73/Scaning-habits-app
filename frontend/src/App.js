@@ -1762,7 +1762,7 @@ const Home = () => {
 
       <Footer />
       <CameraModal isOpen={isCameraOpen} onClose={() => setIsCameraOpen(false)} onCapture={handleCapture} isLoading={isLoading} />
-      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onSuccess={() => {}} initialMode="login" />
+      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onSuccess={() => {}} initialMode="register" />
       <ProfileModal isOpen={showProfileModal} onClose={() => setShowProfileModal(false)} />
       {showGeneralChat && <GeneralChat userProfile={user?.profile || profile} onClose={() => setShowGeneralChat(false)} />}
       <Toaster position="top-center" richColors toastOptions={{ style: { background: '#18181b', border: '1px solid #27272a', color: '#fafafa' } }} />
