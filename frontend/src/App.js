@@ -1778,8 +1778,6 @@ function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Home />} />
-            <Route path="/privacy" element={<Home />} />
-            <Route path="/terms" element={<Home />} />
             <Route path="/contact" element={<Home />} />
           </Routes>
         </BrowserRouter>
