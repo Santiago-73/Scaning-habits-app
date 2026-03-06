@@ -718,14 +718,10 @@ const Footer = () => {
           </div>
           
           <div className="flex flex-wrap justify-center gap-6 text-sm">
-            <a href="/privacy" className="text-zinc-500 hover:text-zinc-300 transition-colors duration-200" data-testid="footer-privacy-link">
-              Política de Privacidad
-            </a>
-            <a href="/terms" className="text-zinc-500 hover:text-zinc-300 transition-colors duration-200" data-testid="footer-terms-link">
-              Términos de Uso
-            </a>
-            <a href="/contact" className="text-zinc-500 hover:text-zinc-300 transition-colors duration-200" data-testid="footer-contact-link">
-              Contacto
+           <a href="/privacy.html">Política de Privacidad</a>
+           <a href="/terms.html">Términos de Uso</a>
+           <a href="/contact" className="text-zinc-500 hover:text-zinc-300 transition-colors duration-200" data-testid="footer-contact-link">
+            Contacto
             </a>
           </div>
           
